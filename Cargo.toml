@@ -3,6 +3,7 @@
 members = [
     "cleansh-core",
     "cleansh",
+    "cleansh-entropy",
 ]
 resolver = "2" 
 

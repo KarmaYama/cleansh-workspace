@@ -9,5 +9,4 @@
 //! This module works closely with `config` (for rule definitions), `validators` (for
 //! advanced pattern validation), and `redaction_match` (for logging and result types).
 
-pub mod regex_sanitizer;
 pub mod compiler;
