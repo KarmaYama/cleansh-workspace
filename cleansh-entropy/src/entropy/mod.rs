@@ -2,8 +2,6 @@
 use libm::log2;
 
 /// Calculates the Shannon entropy of a byte slice.
-/// 
-/// Returns the entropy in bits per symbol.
 pub fn calculate_shannon_entropy(data: &[u8]) -> f64 {
     if data.is_empty() {
         return 0.0;

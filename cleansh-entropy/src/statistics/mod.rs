@@ -72,7 +72,7 @@ mod tests {
         // Values: 2, 4, 4, 4, 5, 5, 7, 9
         // Mean: 5.0
         // Variance: (9+1+1+1+0+0+4+16)/8 = 32/8 = 4.0
-        // Std Dev: 2.0
+        // Std Dev: 2.0u
         let values = vec![2.0, 4.0, 4.0, 4.0, 5.0, 5.0, 7.0, 9.0];
         let stats = compute_stats(&values);
         
