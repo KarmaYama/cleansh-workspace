@@ -12,7 +12,8 @@ on:
 jobs:
   analyze:
     name: Analyze (${{ matrix.language }})
-    runs-on: ${{ (matrix.language == 'swift' && 'macos-latest') || 'ubuntu-latest' }}
+    # Use standard ubuntu runner for Rust
+    runs-on: ubuntu-latest
     permissions:
       security-events: write
       packages: read
@@ -23,7 +24,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-        # CHANGED: Switched from javascript-typescript to rust
+        # CHANGED: Removed javascript-typescript, kept only rust
         - language: rust
           build-mode: none 
 
@@ -34,6 +35,7 @@ jobs:
         submodules: recursive
 
     # --- START OF RUST ENVIRONMENT SETUP FOR CODEQL ---
+    # This step ensures that all necessary targets are available for CodeQL's internal build.
     - if: matrix.language == 'rust'
       name: Prepare Rust environment for CodeQL
       shell: bash
@@ -42,7 +44,7 @@ jobs:
         rustup update --no-self-update stable
         rustup default stable
         
-        # Install targets for cross-platform support during analysis
+        # Install targets for cross-platform support during analysis (fixes compilation checks)
         rustup target add aarch64-unknown-linux-gnu x86_64-unknown-linux-musl || true
         echo "Rust environment preparation complete."
     # --- END OF RUST ENVIRONMENT SETUP FOR CODEQL ---
@@ -53,6 +55,7 @@ jobs:
         languages: ${{ matrix.language }}
         build-mode: ${{ matrix.build-mode }}
       env:
+        # Pass release flag to CodeQL build
         CODEQL_ACTION_EXTRA_OPTIONS: >-
           ${{ matrix.language == 'rust' && '--release' || '' }}
 

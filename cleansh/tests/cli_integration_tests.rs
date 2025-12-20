@@ -107,7 +107,7 @@ fn test_basic_sanitization() -> Result<()> {
     // to match the behavior of `println!` which adds a newline by default.
     let expected_stdout = "My email is [EMAIL_REDACTED] and my IP is [IPV4_REDACTED].\n";
     let expected_stderr_contains_substrings = vec![
-        // FIX: Updated version to 0.1.9
+        // FIX: Updated version to 0.1.9 to match Cargo.toml
         "[INFO cleansh] cleansh started. Version: 0.1.9".to_string(),
         "[DEBUG cleansh_core::config] Loading default rules from embedded string...".to_string(),
         // FIX: The log message has been updated to be more specific.
