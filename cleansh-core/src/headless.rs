@@ -95,6 +95,7 @@ mod tests {
                     author: "Obscura Team".to_string(),
                 },
             ],
+            engines: Default::default(), // <--- Added this line to fix the compiler error
         };
         let options = EngineOptions::default();
         

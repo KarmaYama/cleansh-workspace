@@ -6,7 +6,6 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 use anyhow::Result;
-// Removed: use log::debug; <--- Fixed unused import
 use strip_ansi_escapes::strip;
 use sha2::{Digest, Sha256};
 use hex;
@@ -18,10 +17,10 @@ use crate::profiles::EngineOptions;
 use crate::engine::SanitizationEngine;
 use crate::sanitizers::compiler::{get_or_compile_rules, CompiledRules};
 
-// Import the low-level entropy logic
 use cleansh_entropy::engine::EntropyEngine as LowLevelEntropyEngine;
 
-// --- A robust, monotonic byte-based `StrippedIndexMapper` ---
+/// Maps byte indices from a stripped string back to the original string,
+/// preserving alignment when ANSI escape codes are removed.
 #[derive(Debug)]
 struct StrippedIndexMapper {
     map: Vec<usize>,
@@ -57,8 +56,8 @@ impl StrippedIndexMapper {
         self.map[idx]
     }
 }
-// --- end mapper ---
 
+/// A sanitization engine that detects secrets based on statistical entropy and context.
 #[derive(Debug)]
 pub struct EntropyEngine {
     config: RedactionConfig,
@@ -68,13 +67,21 @@ pub struct EntropyEngine {
 }
 
 impl EntropyEngine {
+    /// Initializes the engine with the provided configuration.
     pub fn new(config: RedactionConfig) -> Result<Self> {
         Self::with_options(config, EngineOptions::default())
     }
 
+    /// Initializes the engine with configuration and runtime options.
+    ///
+    /// It extracts the entropy threshold from `config.engines.entropy.threshold`.
+    /// If not set, it defaults to `0.5`.
     pub fn with_options(config: RedactionConfig, options: EngineOptions) -> Result<Self> {
-        // Initialize the low-level engine with a default confidence threshold (e.g., 4.0)
-        let inner_engine = LowLevelEntropyEngine::new(4.0);
+        let threshold = config.engines.entropy.threshold.unwrap_or(0.5);
+        
+        log::debug!("Initializing EntropyEngine with confidence threshold: {}", threshold);
+
+        let inner_engine = LowLevelEntropyEngine::new(threshold);
         let compiled_rules = get_or_compile_rules(&config)?;
 
         Ok(Self {

@@ -1,4 +1,4 @@
-// tests/config_integration_tests.rs
+// cleansh-core/tests/config_integration_tests.rs
 use anyhow::Result;
 use tempfile::NamedTempFile;
 use std::io::Write;
@@ -73,8 +73,8 @@ fn test_merge_rules_no_user_config() {
                 name: "email".to_string(),
                 author: "".to_string(),
                 created_at: "".to_string(),
-                updated_at: "".to_string(), // Added missing field
-                version: "".to_string(), // Added missing field
+                updated_at: "".to_string(),
+                version: "".to_string(),
                 pattern_type: "regex".to_string(),
                 pattern: Some("old@example.com".to_string()),
                 replace_with: "[OLD_EMAIL]".to_string(),
@@ -88,6 +88,7 @@ fn test_merge_rules_no_user_config() {
                 tags: None,
             },
         ],
+        engines: Default::default(), // Added
     };
     let merged = config::merge_rules(default_config.clone(), None);
     assert_eq!(merged.rules.len(), 1);
@@ -104,8 +105,8 @@ fn test_merge_rules_override() {
                 name: "email".to_string(),
                 author: "".to_string(),
                 created_at: "".to_string(),
-                updated_at: "".to_string(), // Added missing field
-                version: "".to_string(), // Added missing field
+                updated_at: "".to_string(),
+                version: "".to_string(),
                 pattern_type: "regex".to_string(),
                 pattern: Some("default@example.com".to_string()),
                 replace_with: "[DEFAULT_EMAIL]".to_string(),
@@ -122,8 +123,8 @@ fn test_merge_rules_override() {
                 name: "ipv4_address".to_string(),
                 author: "".to_string(),
                 created_at: "".to_string(),
-                updated_at: "".to_string(), // Added missing field
-                version: "".to_string(), // Added missing field
+                updated_at: "".to_string(),
+                version: "".to_string(),
                 pattern_type: "regex".to_string(),
                 pattern: Some("0.0.0.0".to_string()),
                 replace_with: "[DEFAULT_IPV4]".to_string(),
@@ -137,6 +138,7 @@ fn test_merge_rules_override() {
                 tags: None,
             },
         ],
+        engines: Default::default(), // Added
     };
     let user_config = RedactionConfig {
         rules: vec![
@@ -144,31 +146,32 @@ fn test_merge_rules_override() {
                 name: "email".to_string(),
                 author: "".to_string(),
                 created_at: "".to_string(),
-                updated_at: "".to_string(), // Added missing field
-                version: "".to_string(), // Added missing field
+                updated_at: "".to_string(),
+                version: "".to_string(),
                 pattern_type: "regex".to_string(),
-                pattern: Some("user@custom.com".to_string()), // Added a pattern
+                pattern: Some("user@custom.com".to_string()),
                 replace_with: "[CUSTOM_EMAIL]".to_string(),
                 description: Some("custom email".to_string()),
                 multiline: false,
                 dot_matches_new_line: false,
                 opt_in: false,
-                programmatic_validation: true, // User overrides and enables programmatic validation
+                programmatic_validation: true,
                 enabled: None,
                 severity: Some("medium".to_string()),
                 tags: Some(vec!["user".to_string()]),
             },
         ],
+        engines: Default::default(), // Added
     };
     let merged = config::merge_rules(default_config, Some(user_config));
     assert_eq!(merged.rules.len(), 2);
     let email_rule = merged.rules.iter().find(|r| r.name == "email").unwrap();
     assert_eq!(email_rule.replace_with, "[CUSTOM_EMAIL]");
     assert_eq!(email_rule.pattern, Some("user@custom.com".to_string()));
-    assert!(email_rule.programmatic_validation); // Assert the overridden value
+    assert!(email_rule.programmatic_validation);
     let ipv4_rule = merged.rules.iter().find(|r| r.name == "ipv4_address").unwrap();
     assert_eq!(ipv4_rule.replace_with, "[DEFAULT_IPV4]");
-    assert!(!ipv4_rule.programmatic_validation); // Should still be false from default
+    assert!(!ipv4_rule.programmatic_validation);
 }
 
 #[test]
@@ -179,8 +182,8 @@ fn test_merge_rules_add_new() {
                 name: "email".to_string(),
                 author: "".to_string(),
                 created_at: "".to_string(),
-                updated_at: "".to_string(), // Added missing field
-                version: "".to_string(), // Added missing field
+                updated_at: "".to_string(),
+                version: "".to_string(),
                 pattern_type: "regex".to_string(),
                 pattern: Some("default@example.com".to_string()),
                 replace_with: "[DEFAULT_EMAIL]".to_string(),
@@ -194,6 +197,7 @@ fn test_merge_rules_add_new() {
                 tags: None,
             },
         ],
+        engines: Default::default(), // Added
     };
     let user_config = RedactionConfig {
         rules: vec![
@@ -201,8 +205,8 @@ fn test_merge_rules_add_new() {
                 name: "new_rule".to_string(),
                 author: "".to_string(),
                 created_at: "".to_string(),
-                updated_at: "".to_string(), // Added missing field
-                version: "".to_string(), // Added missing field
+                updated_at: "".to_string(),
+                version: "".to_string(),
                 pattern_type: "regex".to_string(),
                 pattern: Some("new_pattern".to_string()),
                 replace_with: "[NEW]".to_string(),
@@ -210,18 +214,19 @@ fn test_merge_rules_add_new() {
                 multiline: false,
                 dot_matches_new_line: false,
                 opt_in: false,
-                programmatic_validation: true, // New rule with programmatic validation
+                programmatic_validation: true,
                 enabled: None,
                 severity: None,
                 tags: None,
             },
         ],
+        engines: Default::default(), // Added
     };
     let merged = config::merge_rules(default_config, Some(user_config));
     assert_eq!(merged.rules.len(), 2);
     assert!(merged.rules.iter().any(|r| r.name == "email"));
     let new_rule = merged.rules.iter().find(|r| r.name == "new_rule").unwrap();
-    assert!(new_rule.programmatic_validation); // Assert the new rule's value
+    assert!(new_rule.programmatic_validation);
 }
 
 #[test]
@@ -232,8 +237,8 @@ fn test_merge_rules_with_opt_in() {
                 name: "default_opt_in".to_string(),
                 author: "".to_string(),
                 created_at: "".to_string(),
-                updated_at: "".to_string(), // Added missing field
-                version: "".to_string(), // Added missing field
+                updated_at: "".to_string(),
+                version: "".to_string(),
                 pattern_type: "regex".to_string(),
                 pattern: Some("default_opt_in_value".to_string()),
                 replace_with: "[DEFAULT_OPT_IN]".to_string(),
@@ -250,8 +255,8 @@ fn test_merge_rules_with_opt_in() {
                 name: "default_non_opt_in".to_string(),
                 author: "".to_string(),
                 created_at: "".to_string(),
-                updated_at: "".to_string(), // Added missing field
-                version: "".to_string(), // Added missing field
+                updated_at: "".to_string(),
+                version: "".to_string(),
                 pattern_type: "regex".to_string(),
                 pattern: Some("default_non_opt_in_value".to_string()),
                 replace_with: "[DEFAULT_NON_OPT_IN]".to_string(),
@@ -265,6 +270,7 @@ fn test_merge_rules_with_opt_in() {
                 tags: None,
             },
         ],
+        engines: Default::default(), // Added
     };
     let user_config = RedactionConfig {
         rules: vec![
@@ -272,8 +278,8 @@ fn test_merge_rules_with_opt_in() {
                 name: "user_opt_in".to_string(),
                 author: "".to_string(),
                 created_at: "".to_string(),
-                updated_at: "".to_string(), // Added missing field
-                version: "".to_string(), // Added missing field
+                updated_at: "".to_string(),
+                version: "".to_string(),
                 pattern_type: "regex".to_string(),
                 pattern: Some("user_opt_in_value".to_string()),
                 replace_with: "[USER_OPT_IN]".to_string(),
@@ -287,33 +293,34 @@ fn test_merge_rules_with_opt_in() {
                 tags: Some(vec!["user".to_string()]),
             },
             RedactionRule {
-                name: "default_opt_in".to_string(), // Override default opt-in
+                name: "default_opt_in".to_string(),
                 author: "".to_string(),
                 created_at: "".to_string(),
-                updated_at: "".to_string(), // Added missing field
-                version: "".to_string(), // Added missing field
+                updated_at: "".to_string(),
+                version: "".to_string(),
                 pattern_type: "regex".to_string(),
                 pattern: Some("overridden_default_opt_in_value".to_string()),
-                replace_with: "[OVERRIDDEN_DEFAULT_OPT_IN]".to_string(), // Corrected a typo here
+                replace_with: "[OVERRIDDEN_DEFAULT_OPT_IN]".to_string(),
                 description: Some("overridden default opt-in rule".to_string()),
                 multiline: false,
                 dot_matches_new_line: false,
-                opt_in: false, // User changes it to non-opt-in
-                programmatic_validation: true, // User adds programmatic validation
+                opt_in: false,
+                programmatic_validation: true,
                 enabled: Some(true),
                 severity: Some("high".to_string()),
                 tags: Some(vec!["user".to_string()]),
             },
         ],
+        engines: Default::default(), // Added
     };
     let merged = config::merge_rules(default_config, Some(user_config));
     assert_eq!(merged.rules.len(), 3);
 
     let default_opt_in_rule = merged.rules.iter().find(|r| r.name == "default_opt_in").unwrap();
-    assert_eq!(default_opt_in_rule.replace_with, "[OVERRIDDEN_DEFAULT_OPT_IN]"); // Corrected a typo here
+    assert_eq!(default_opt_in_rule.replace_with, "[OVERRIDDEN_DEFAULT_OPT_IN]");
     assert_eq!(default_opt_in_rule.pattern, Some("overridden_default_opt_in_value".to_string()));
     assert!(!default_opt_in_rule.opt_in);
-    assert!(default_opt_in_rule.programmatic_validation); // Assert the overridden value
+    assert!(default_opt_in_rule.programmatic_validation);
 
     assert!(merged.rules.iter().any(|r| r.name == "user_opt_in"));
     assert!(merged.rules.iter().any(|r| r.name == "default_non_opt_in"));
