@@ -2,7 +2,7 @@
 
 [![CodeQL](https://github.com/KarmaYama/cleansh/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/KarmaYama/cleansh/actions/workflows/github-code-scanning/codeql) [![CodeQL Advanced](https://github.com/KarmaYama/cleansh/actions/workflows/codeql.yml/badge.svg)](https://github.com/KarmaYama/cleansh/actions/workflows/codeql.yml) [![Dependabot Updates](https://github.com/KarmaYama/cleansh/actions/workflows/dependabot/dependabot-updates/badge.svg)](https://github.com/KarmaYama/cleansh/actions/workflows/dependabot/dependabot-updates) [![Release](https://github.com/KarmaYama/cleansh/actions/workflows/release.yml/badge.svg)](https://github.com/KarmaYama/cleansh/actions/workflows/release.yml) [![Rust CI](https://github.com/KarmaYama/cleansh/actions/workflows/rust.yml/badge.svg)](https://github.com/KarmaYama/cleansh/actions/workflows/rust.yml) [![Star](https://img.shields.io/github/stars/KarmaYama/cleansh.svg?style=social)](https://github.com/KarmaYama/cleansh/stargazers)
 
-**Stop relying on leaky regex. CleanSH (Clean Shell) is a high-trust, modular Rust utility designed to securely and programmatically sanitize sensitive data from your terminal output, logs, and text. Star this repo to follow our journey!**
+**Stop relying on leaky regex. CleanSH (Clean Shell) is a high-trust, modular Rust utility designed to securely and programmatically sanitize sensitive data from your terminal output, logs, and text.**
 
 ---
 
@@ -14,24 +14,28 @@ This repository (`cleansh-workspace`) is a **Rust monorepo** designed for the se
 
 ### Key Components
 
-1.  **`CleanSH` (CLI Application):** A command-line utility for redacting sensitive information. This is the main user-facing application, built for high-trust and reliability.
+1.  **`CleanSH` (CLI Application):**
     * **Location:** [`/cleansh`](./cleansh/README.md)
-    * **Purpose:** Provides a pre-configured solution for data sanitization with flexible options for custom rules and output formats via the CLI.
+    * **Purpose:** The main user-facing command-line utility. It orchestrates the scanning engines, manages configuration profiles, and handles I/O streams for real-time redaction.
 
-2.  **`CleanSH-core` (Core Library):** A standalone, reusable Rust library that encapsulates the fundamental logic for data redaction and validation.
+2.  **`CleanSH-core` (Core Library):**
     * **Location:** [`/cleansh-core`](./cleansh-core/README.md)
-    * **Purpose:** Designed to be highly reliable and independent, enabling seamless integration into other Rust projects. The `cleansh` CLI uses this core library.
+    * **Purpose:** A standalone, reusable Rust library that encapsulates the business logic for data redaction, rule compilation, and validation. It defines the `SanitizationEngine` trait that powers the CLI.
+
+3.  **`CleanSH-entropy` (Math Engine):**
+    * **Location:** [`/cleansh-entropy`](./cleansh-entropy/README.md)
+    * **Purpose:** A `no_std`, zero-copy mathematical engine. It implements Shannon entropy calculation, Z-score statistical anomaly detection, and Aho-Corasick context scanning to detect unstructured secrets (like random API keys) that regex misses.
 
 ---
 
-### Licensing and Commercial Use
+### License (Open Source)
 
-As part of our commitment to sustainable development, the `cleansh` project has adopted the **PolyForm Noncommercial License 1.0.0**.
+As of version **v0.1.9**, the `cleansh` workspace has transitioned to a fully Open Source model.
 
-* The **free tier** includes all core sanitization functionality, such as `cleansh sanitize`, and is available for all noncommercial uses.
-* The **pro tier** includes advanced features designed for commercial and enterprise workflows, such as `cleansh scan`, which are now gated and require a commercial license key.
+* **License:** All components (`cleansh`, `core`, and `entropy`) are dual-licensed under **MIT** or **Apache-2.0**.
+* **Commercial Use:** You are free to use, modify, and distribute these tools for any purpose, including commercial applications, without restriction.
 
-For a detailed breakdown of which features are in each tier and a full explanation of the licensing policy, please refer to the main `CleanSH` CLI [README](./cleansh/README.md) and [License Notes](./cleansh/LICENSE_NOTES.md).
+*The previous "PolyForm Noncommercial" license has been retired.*
 
 ---
 
@@ -52,10 +56,11 @@ To explore or contribute to the `CleanSH` project:
     ```
 
 3.  **Run Tests:**
-    Ensure everything is functioning correctly by running the full test suite:
+    Ensure everything is functioning correctly by running the full test suite across all crates:
     ```bash
-    cargo test --package cleansh
+    cargo test --workspace
     ```
+
 ---
 
 ### **Community and Support**
