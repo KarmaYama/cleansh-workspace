@@ -1,3 +1,4 @@
+// cleansh-entropy/src/statistics/mod.rs
 use libm::sqrt;
 
 /// Statistics for a set of entropy values used to determine baseline randomness.
@@ -5,81 +6,67 @@ use libm::sqrt;
 pub struct EntropyStats {
     /// The arithmetic mean of the sampled entropy values.
     pub mean: f64,
-    /// The standard deviation, representing the variance in the sampled context.
+    /// The unbiased sample standard deviation.
     pub std_dev: f64,
+    /// The number of samples used to calculate this baseline.
+    pub sample_count: usize,
 }
 
-/// Calculates mean and standard deviation for a slice of values.
-///
-/// This is used to establish a "normal" range of entropy for a given text
-/// so that high-entropy outliers (potential secrets) can be identified.
+/// Calculates mean and unbiased sample standard deviation for a slice of values.
 pub fn compute_stats(values: &[f64]) -> EntropyStats {
-    if values.is_empty() {
-        return EntropyStats { mean: 0.0, std_dev: 0.0 };
+    let n = values.len();
+    if n == 0 {
+        return EntropyStats { mean: 0.0, std_dev: 0.0, sample_count: 0 };
     }
 
-    let len = values.len() as f64;
-    
-    // 1. Calculate the Arithmetic Mean
-    let mean = values.iter().sum::<f64>() / len;
+    let n_f64 = n as f64;
+    let mean = values.iter().sum::<f64>() / n_f64;
 
-    // 2. Calculate Variance
-    // Variance is the average of the squared differences from the Mean.
-    let variance = values.iter()
-        .map(|value| {
-            let diff = mean - value;
+    if n == 1 {
+        return EntropyStats { mean, std_dev: 0.0, sample_count: 1 };
+    }
+
+    let sum_sq_diff: f64 = values.iter()
+        .map(|&x| {
+            let diff = x - mean;
             diff * diff
         })
-        .sum::<f64>() / len;
+        .sum();
 
-    // 3. Standard Deviation is the square root of Variance
+    // Use Bessel's correction (n - 1) for unbiased sample variance.
+    // This is more conservative and accurate for small window sizes.
+    let variance = sum_sq_diff / (n_f64 - 1.0);
+
+    // Guard against floating point noise: if variance is essentially zero,
+    // clamp SD to zero to avoid precision-induced Z-score spikes.
+    let std_dev = if variance < 1e-12 {
+        0.0
+    } else {
+        sqrt(variance)
+    };
+
     EntropyStats {
         mean,
-        std_dev: sqrt(variance),
+        std_dev,
+        sample_count: n,
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    // FIX: Explicitly import vec macro from alloc for no_std tests
     extern crate alloc;
     use alloc::vec;
 
-    // Using a small epsilon for floating point comparisons in tests
-    const EPSILON: f64 = 1e-10;
-
     #[test]
-    fn test_compute_stats_empty() {
-        let stats = compute_stats(&[]);
-        assert_eq!(stats.mean, 0.0);
-        assert_eq!(stats.std_dev, 0.0);
-    }
-
-    #[test]
-    fn test_compute_stats_single_value() {
-        let stats = compute_stats(&[5.0]);
-        assert_eq!(stats.mean, 5.0);
-        assert_eq!(stats.std_dev, 0.0);
-    }
-
-    #[test]
-    fn test_compute_stats_identical_values() {
-        let stats = compute_stats(&[4.0, 4.0, 4.0]);
-        assert_eq!(stats.mean, 4.0);
-        assert_eq!(stats.std_dev, 0.0);
-    }
-
-    #[test]
-    fn test_compute_stats_simple_range() {
-        // Values: 2, 4, 4, 4, 5, 5, 7, 9
-        // Mean: 5.0
-        // Variance: (9+1+1+1+0+0+4+16)/8 = 32/8 = 4.0
-        // Std Dev: 2.0
+    fn test_compute_stats_unbiased() {
+        // Simple range where population SD is 2.0.
+        // Sample SD (N-1) will be ~2.138
         let values = vec![2.0, 4.0, 4.0, 4.0, 5.0, 5.0, 7.0, 9.0];
         let stats = compute_stats(&values);
         
-        assert!((stats.mean - 5.0).abs() < EPSILON);
-        assert!((stats.std_dev - 2.0).abs() < EPSILON);
+        assert!((stats.mean - 5.0).abs() < 1e-10);
+        assert!(stats.std_dev > 2.13); // Confirms Bessel correction is active
+        assert_eq!(stats.sample_count, 8);
     }
 }

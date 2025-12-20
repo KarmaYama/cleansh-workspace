@@ -1,4 +1,4 @@
-// cleansh-entropy/src/engine/mod.rs
+extern crate alloc;
 use alloc::vec::Vec;
 use crate::scanner::{scan_token_against_context, AnomalyScannerConfig};
 use crate::context::ContextScanner;
@@ -12,7 +12,7 @@ pub struct EntropyMatch {
     pub entropy: f64,
 }
 
-#[derive(Debug)] // <--- Added Debug
+#[derive(Debug)]
 pub struct EntropyEngine {
     scanner_config: AnomalyScannerConfig,
     context_scanner: ContextScanner,
@@ -58,9 +58,11 @@ impl EntropyEngine {
     fn process_token(&self, text: &[u8], start: usize, end: usize, matches: &mut Vec<EntropyMatch>) {
         let token = &text[start..end];
         
+        // Minimum length check to filter out common short words
         if token.len() < 8 { return; }
 
-        let anomaly = scan_token_against_context(token, text, &self.scanner_config);
+        // FIX: Now passing 'start' as the offset to the scanner
+        let anomaly = scan_token_against_context(token, text, start, &self.scanner_config);
         
         if anomaly.z_score < 1.0 { return; }
 
