@@ -1,17 +1,19 @@
-// tests/sanitize_shell_integration_tests.rs
-// This is an integration test, so we import from the crate root
+// cleansh/tests/sanitize_shell_integration_tests.rs
+//! Integration tests for the sanitization engine using shell-like scenarios.
+//! This is an integration test, so we import from the crate root and core.
+
 use anyhow::Result;
-use cleansh::test_exposed::config::{RedactionConfig, RedactionRule, MAX_PATTERN_LENGTH};
+// FIX: Use cleansh_core directly as it is a public dependency.
+// This avoids the "could not find test_exposed" error.
+use cleansh_core::config::{RedactionConfig, RedactionRule, MAX_PATTERN_LENGTH};
 use cleansh_core::{engine::SanitizationEngine, RegexEngine};
-use strip_ansi_escapes;
 use chrono::Utc;
 use uuid::Uuid;
 use sha2::{Sha256, Digest};
 
-
-// This block ensures that logging (e.g., from pii_debug! macro) is set up for tests.
-// It initializes env_logger exactly once per test run.
-#[allow(unused_imports)] // Allow unused for clarity, as it's not always directly called
+/// This block ensures that logging (e.g., from pii_debug! macro) is set up for tests.
+/// It initializes env_logger exactly once per test run.
+#[allow(unused_imports)]
 #[cfg(test)]
 mod test_setup {
     use std::sync::Once;
@@ -22,12 +24,12 @@ mod test_setup {
             env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("debug"))
                 .is_test(true)
                 .try_init()
-                .ok(); // Ignore error if logger already initialized
+                .ok(); 
         });
     }
 }
 
-// Helper to create a basic rule for testing
+/// Helper to create a basic rule for testing
 fn create_test_rule(
     name: &str,
     pattern: &str,
@@ -58,7 +60,7 @@ fn create_test_rule(
     }
 }
 
-// Helper function to filter rules based on opt-in/disabled lists
+/// Helper function to filter rules based on opt-in/disabled lists
 fn filter_rules(
     rules: Vec<RedactionRule>,
     enabled: &[String],
@@ -73,7 +75,7 @@ fn filter_rules(
         } else if r.opt_in {
             is_enabled_explicitly
         } else {
-            true // Default rules are always included unless disabled
+            true 
         }
     }).collect()
 }
@@ -86,8 +88,8 @@ fn test_compile_rules_basic() -> Result<()> {
         create_test_rule("ip", r"\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b", "[IP]", false, None, false, false, false),
     ];
     let config = RedactionConfig { rules: rules_vec };
-    let compiled = RegexEngine::new(config)?;
-    assert_eq!(compiled.get_rules().rules.len(), 2);
+    let engine = RegexEngine::new(config)?;
+    assert_eq!(engine.get_rules().rules.len(), 2);
     Ok(())
 }
 
@@ -100,9 +102,9 @@ fn test_compile_rules_opt_in_not_enabled() -> Result<()> {
     ];
     let filtered_rules = filter_rules(rules_vec, &[], &[]);
     let config = RedactionConfig { rules: filtered_rules };
-    let compiled = RegexEngine::new(config)?;
-    assert_eq!(compiled.get_rules().rules.len(), 1);
-    assert_eq!(compiled.get_rules().rules[0].name, "email");
+    let engine = RegexEngine::new(config)?;
+    assert_eq!(engine.get_rules().rules.len(), 1);
+    assert_eq!(engine.get_rules().rules[0].name, "email");
     Ok(())
 }
 
@@ -114,8 +116,8 @@ fn test_compile_rules_opt_in_missing_returns_empty() -> Result<()> {
     ];
     let filtered_rules = filter_rules(rules_vec, &[], &[]);
     let config = RedactionConfig { rules: filtered_rules };
-    let compiled = RegexEngine::new(config)?;
-    assert_eq!(compiled.get_rules().rules.len(), 0);
+    let engine = RegexEngine::new(config)?;
+    assert_eq!(engine.get_rules().rules.len(), 0);
     Ok(())
 }
 
@@ -128,9 +130,9 @@ fn test_compile_rules_opt_in_enabled() -> Result<()> {
     ];
     let filtered_rules = filter_rules(rules_vec, &["aws_key".to_string()], &[]);
     let config = RedactionConfig { rules: filtered_rules };
-    let compiled = RegexEngine::new(config)?;
-    assert_eq!(compiled.get_rules().rules.len(), 2);
-    assert!(compiled.get_rules().rules.iter().any(|r| r.name == "aws_key"));
+    let engine = RegexEngine::new(config)?;
+    assert_eq!(engine.get_rules().rules.len(), 2);
+    assert!(engine.get_rules().rules.iter().any(|r| r.name == "aws_key"));
     Ok(())
 }
 
@@ -143,9 +145,9 @@ fn test_compile_rules_disabled() -> Result<()> {
     ];
     let filtered_rules = filter_rules(rules_vec, &["aws_key".to_string()], &["email".to_string()]);
     let config = RedactionConfig { rules: filtered_rules };
-    let compiled = RegexEngine::new(config)?;
-    assert_eq!(compiled.get_rules().rules.len(), 1);
-    assert_eq!(compiled.get_rules().rules[0].name, "aws_key");
+    let engine = RegexEngine::new(config)?;
+    assert_eq!(engine.get_rules().rules.len(), 1);
+    assert_eq!(engine.get_rules().rules[0].name, "aws_key");
     Ok(())
 }
 
@@ -157,8 +159,8 @@ fn test_compile_rules_opt_in_and_disabled_conflict() -> Result<()> {
     ];
     let filtered_rules = filter_rules(rules_vec, &["sensitive_data".to_string()], &["sensitive_data".to_string()]);
     let config = RedactionConfig { rules: filtered_rules };
-    let compiled = RegexEngine::new(config)?;
-    assert_eq!(compiled.get_rules().rules.len(), 0);
+    let engine = RegexEngine::new(config)?;
+    assert_eq!(engine.get_rules().rules.len(), 0);
     Ok(())
 }
 
@@ -168,12 +170,12 @@ fn test_overlapping_rules_priority() -> Result<()> {
     let rule_email = create_test_rule("email", r"(\w+)@example\.com", "[EMAIL]", false, None, false, false, false);
     let rule_generic = create_test_rule("example_match", r"example\.com", "[DOMAIN]", false, None, false, false, false);
     let config = RedactionConfig { rules: vec![rule_email, rule_generic] };
-    let compiled = RegexEngine::new(config)?;
+    let engine = RegexEngine::new(config)?;
 
     let input = "user@example.com";
     let run_id = Uuid::new_v4().to_string();
     let input_hash = format!("{:x}", Sha256::digest(input.as_bytes()));
-    let (sanitized, _summary) = compiled.sanitize(input, "test_source", &run_id, &input_hash, "test_user", "Integration test", "Success", None)?;
+    let (sanitized, _summary) = engine.sanitize(input, "test_source", &run_id, &input_hash, "test_user", "Integration test", "Success", None)?;
     
     assert_eq!(sanitized, "[EMAIL]");
     Ok(())
@@ -184,12 +186,12 @@ fn test_sanitize_content_basic() -> Result<()> {
     test_setup::setup_logger();
     let rule = create_test_rule("email", r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b", "[EMAIL_REDACTED]", false, None, false, false, false);
     let config = RedactionConfig { rules: vec![rule] };
-    let compiled_rules = RegexEngine::new(config)?;
+    let engine = RegexEngine::new(config)?;
 
     let input = "My email is test@example.com.";
     let run_id = Uuid::new_v4().to_string();
     let input_hash = format!("{:x}", Sha256::digest(input.as_bytes()));
-    let (output, _summary) = compiled_rules.sanitize(input, "test_source", &run_id, &input_hash, "test_user", "Integration test", "Success", None)?;
+    let (output, _summary) = engine.sanitize(input, "test_source", &run_id, &input_hash, "test_user", "Integration test", "Success", None)?;
     
     assert_eq!(output, "My email is [EMAIL_REDACTED].");
     Ok(())
@@ -200,12 +202,12 @@ fn test_sanitize_content_multiple_matches_same_rule() -> Result<()> {
     test_setup::setup_logger();
     let rule = create_test_rule("email", r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b", "[EMAIL_REDACTED]", false, None, false, false, false);
     let config = RedactionConfig { rules: vec![rule] };
-    let compiled_rules = RegexEngine::new(config)?;
+    let engine = RegexEngine::new(config)?;
 
     let input = "test1@example.com and test2@example.com.";
     let run_id = Uuid::new_v4().to_string();
     let input_hash = format!("{:x}", Sha256::digest(input.as_bytes()));
-    let (output, _summary) = compiled_rules.sanitize(input, "test_source", &run_id, &input_hash, "test_user", "Integration test", "Success", None)?;
+    let (output, _summary) = engine.sanitize(input, "test_source", &run_id, &input_hash, "test_user", "Integration test", "Success", None)?;
     
     assert_eq!(
         output,
@@ -221,12 +223,12 @@ fn test_sanitize_content_multiple_rules() -> Result<()> {
     let ip_rule = create_test_rule("ipv4_address", r"\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b", "[IPV4]", false, None, false, false, false);
 
     let config = RedactionConfig { rules: vec![email_rule, ip_rule] };
-    let compiled_rules = RegexEngine::new(config)?;
+    let engine = RegexEngine::new(config)?;
 
     let input = "Email: a@b.com, IP: 192.168.1.1.";
     let run_id = Uuid::new_v4().to_string();
     let input_hash = format!("{:x}", Sha256::digest(input.as_bytes()));
-    let (output, _summary) = compiled_rules.sanitize(input, "test_source", &run_id, &input_hash, "test_user", "Integration test", "Success", None)?;
+    let (output, _summary) = engine.sanitize(input, "test_source", &run_id, &input_hash, "test_user", "Integration test", "Success", None)?;
     
     assert_eq!(output, "Email: [EMAIL], IP: [IPV4].");
     Ok(())
@@ -237,20 +239,18 @@ fn test_sanitize_content_with_ansi_escapes() -> Result<()> {
     test_setup::setup_logger();
     let rule = create_test_rule("email", r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b", "[EMAIL]", false, None, false, false, false);
     let config = RedactionConfig { rules: vec![rule] };
-    let compiled_rules = RegexEngine::new(config)?;
+    let engine = RegexEngine::new(config)?;
 
     let input_with_ansi = "Hello \x1b[31mtest@example.com\x1b[0m world.";
     let input_stripped = strip_ansi_escapes::strip_str(input_with_ansi);
     
     let run_id = Uuid::new_v4().to_string();
     let input_hash = format!("{:x}", Sha256::digest(input_stripped.as_bytes()));
-    let (output, _summary) = compiled_rules.sanitize(&input_stripped, "test_source", &run_id, &input_hash, "test_user", "Integration test", "Success", None)?;
+    let (output, _summary) = engine.sanitize(&input_stripped, "test_source", &run_id, &input_hash, "test_user", "Integration test", "Success", None)?;
     
     assert_eq!(output, "Hello [EMAIL] world.");
     Ok(())
 }
-
-// Tests for programmatic validation
 
 #[test]
 fn test_us_ssn_programmatic_validation_valid() -> Result<()> {
@@ -263,12 +263,12 @@ fn test_us_ssn_programmatic_validation_valid() -> Result<()> {
         true,
     );
     let config = RedactionConfig { rules: vec![rule] };
-    let compiled_rules = RegexEngine::new(config)?;
+    let engine = RegexEngine::new(config)?;
 
     let text_valid = "My SSN is 123-45-6789. Another is 789-12-3456.";
     let run_id = Uuid::new_v4().to_string();
     let input_hash = format!("{:x}", Sha256::digest(text_valid.as_bytes()));
-    let (sanitized_valid, _summary) = compiled_rules.sanitize(text_valid, "test_source", &run_id, &input_hash, "test_user", "Integration test", "Success", None)?;
+    let (sanitized_valid, _summary) = engine.sanitize(text_valid, "test_source", &run_id, &input_hash, "test_user", "Integration test", "Success", None)?;
 
     assert_eq!(sanitized_valid, "My SSN is [US_SSN_REDACTED]. Another is [US_SSN_REDACTED].");
     Ok(())
@@ -285,12 +285,12 @@ fn test_us_ssn_programmatic_validation_invalid_area_000() -> Result<()> {
         true,
     );
     let config = RedactionConfig { rules: vec![rule] };
-    let compiled_rules = RegexEngine::new(config)?;
+    let engine = RegexEngine::new(config)?;
 
     let text_invalid_area_000 = "Invalid SSN: 000-12-3456.";
     let run_id = Uuid::new_v4().to_string();
     let input_hash = format!("{:x}", Sha256::digest(text_invalid_area_000.as_bytes()));
-    let (sanitized_invalid_area_000, _summary) = compiled_rules.sanitize(text_invalid_area_000, "test_source", &run_id, &input_hash, "test_user", "Integration test", "Success", None)?;
+    let (sanitized_invalid_area_000, _summary) = engine.sanitize(text_invalid_area_000, "test_source", &run_id, &input_hash, "test_user", "Integration test", "Success", None)?;
     
     assert_eq!(sanitized_invalid_area_000, "Invalid SSN: 000-12-3456.");
     Ok(())
@@ -307,12 +307,12 @@ fn test_us_ssn_programmatic_validation_invalid_area_666() -> Result<()> {
         true,
     );
     let config = RedactionConfig { rules: vec![rule] };
-    let compiled_rules = RegexEngine::new(config)?;
+    let engine = RegexEngine::new(config)?;
 
     let text_invalid_area_666 = "Another invalid: 666-78-9012.";
     let run_id = Uuid::new_v4().to_string();
     let input_hash = format!("{:x}", Sha256::digest(text_invalid_area_666.as_bytes()));
-    let (sanitized_invalid_area_666, _summary) = compiled_rules.sanitize(text_invalid_area_666, "test_source", &run_id, &input_hash, "test_user", "Integration test", "Success", None)?;
+    let (sanitized_invalid_area_666, _summary) = engine.sanitize(text_invalid_area_666, "test_source", &run_id, &input_hash, "test_user", "Integration test", "Success", None)?;
 
     assert_eq!(sanitized_invalid_area_666, "Another invalid: 666-78-9012.");
     Ok(())
@@ -329,12 +329,12 @@ fn test_us_ssn_programmatic_validation_invalid_area_9xx() -> Result<()> {
         true,
     );
     let config = RedactionConfig { rules: vec![rule] };
-    let compiled_rules = RegexEngine::new(config)?;
+    let engine = RegexEngine::new(config)?;
 
     let text_invalid_area_9xx = "Area 9: 900-11-2222.";
     let run_id = Uuid::new_v4().to_string();
     let input_hash = format!("{:x}", Sha256::digest(text_invalid_area_9xx.as_bytes()));
-    let (sanitized_invalid_area_9xx, _summary) = compiled_rules.sanitize(text_invalid_area_9xx, "test_source", &run_id, &input_hash, "test_user", "Integration test", "Success", None)?;
+    let (sanitized_invalid_area_9xx, _summary) = engine.sanitize(text_invalid_area_9xx, "test_source", &run_id, &input_hash, "test_user", "Integration test", "Success", None)?;
     
     assert_eq!(sanitized_invalid_area_9xx, "Area 9: 900-11-2222.");
     Ok(())
@@ -351,12 +351,12 @@ fn test_us_ssn_programmatic_validation_invalid_group_00() -> Result<()> {
         true,
     );
     let config = RedactionConfig { rules: vec![rule] };
-    let compiled_rules = RegexEngine::new(config)?;
+    let engine = RegexEngine::new(config)?;
 
     let text_invalid_group_00 = "Group 00: 123-00-4567.";
     let run_id = Uuid::new_v4().to_string();
     let input_hash = format!("{:x}", Sha256::digest(text_invalid_group_00.as_bytes()));
-    let (sanitized_invalid_group_00, _summary) = compiled_rules.sanitize(text_invalid_group_00, "test_source", &run_id, &input_hash, "test_user", "Integration test", "Success", None)?;
+    let (sanitized_invalid_group_00, _summary) = engine.sanitize(text_invalid_group_00, "test_source", &run_id, &input_hash, "test_user", "Integration test", "Success", None)?;
 
     assert_eq!(sanitized_invalid_group_00, "Group 00: 123-00-4567.");
     Ok(())
@@ -373,12 +373,12 @@ fn test_us_ssn_programmatic_validation_invalid_serial_0000() -> Result<()> {
         true,
     );
     let config = RedactionConfig { rules: vec![rule] };
-    let compiled_rules = RegexEngine::new(config)?;
+    let engine = RegexEngine::new(config)?;
 
     let text_invalid_serial_0000 = "Serial 0000: 123-45-0000.";
     let run_id = Uuid::new_v4().to_string();
     let input_hash = format!("{:x}", Sha256::digest(text_invalid_serial_0000.as_bytes()));
-    let (sanitized_invalid_serial_0000, _summary) = compiled_rules.sanitize(text_invalid_serial_0000, "test_source", &run_id, &input_hash, "test_user", "Integration test", "Success", None)?;
+    let (sanitized_invalid_serial_0000, _summary) = engine.sanitize(text_invalid_serial_0000, "test_source", &run_id, &input_hash, "test_user", "Integration test", "Success", None)?;
     
     assert_eq!(sanitized_invalid_serial_0000, "Serial 0000: 123-45-0000.");
     Ok(())
@@ -395,12 +395,12 @@ fn test_uk_nino_programmatic_validation_valid() -> Result<()> {
         true,
     );
     let config = RedactionConfig { rules: vec![rule] };
-    let compiled_rules = RegexEngine::new(config)?;
+    let engine = RegexEngine::new(config)?;
 
     let input = "Valid NINO: AB123456A. Valid Spaced NINO: AA 12 34 56 B.";
     let run_id = Uuid::new_v4().to_string();
     let input_hash = format!("{:x}", Sha256::digest(input.as_bytes()));
-    let (sanitized, _summary) = compiled_rules.sanitize(input, "test_source", &run_id, &input_hash, "test_user", "Integration test", "Success", None)?;
+    let (sanitized, _summary) = engine.sanitize(input, "test_source", &run_id, &input_hash, "test_user", "Integration test", "Success", None)?;
     
     assert_eq!(sanitized, "Valid NINO: [UK_NINO_REDACTED]. Valid Spaced NINO: [UK_NINO_REDACTED].");
     Ok(())
@@ -417,12 +417,12 @@ fn test_uk_nino_programmatic_validation_invalid_prefix() -> Result<()> {
         true,
     );
     let config = RedactionConfig { rules: vec![rule] };
-    let compiled_rules = RegexEngine::new(config)?;
+    let engine = RegexEngine::new(config)?;
 
     let input = "Invalid BG: BG123456A. Invalid GB: GB123456B. Invalid ZZ: ZZ123456C. Invalid DF: DF123456A. Invalid QV: QV123456B.";
     let run_id = Uuid::new_v4().to_string();
     let input_hash = format!("{:x}", Sha256::digest(input.as_bytes()));
-    let (sanitized, _summary) = compiled_rules.sanitize(input, "test_source", &run_id, &input_hash, "test_user", "Integration test", "Success", None)?;
+    let (sanitized, _summary) = engine.sanitize(input, "test_source", &run_id, &input_hash, "test_user", "Integration test", "Success", None)?;
     
     assert_eq!(sanitized, "Invalid BG: BG123456A. Invalid GB: GB123456B. Invalid ZZ: ZZ123456C. Invalid DF: DF123456A. Invalid QV: QV123456B.");
     Ok(())

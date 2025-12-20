@@ -50,7 +50,8 @@ use strip_ansi_escapes::strip as strip_ansi_escapes_fn;
 /// # Returns
 /// An `assert_cmd::assert::Assert` instance, allowing chaining of assertions.
 fn run_cleansh_command(input: &str, args: &[&str]) -> assert_cmd::assert::Assert {
-    let mut cmd = Command::cargo_bin("cleansh").unwrap();
+    // FIX: Using assert_cmd::cargo_bin! to handle custom build directories and avoid deprecation
+    let mut cmd = Command::new(assert_cmd::cargo_bin!("cleansh"));
     // CRITICAL: Set RUST_LOG for the *spawned cleansh process*.
     // This ensures debug logs from your application are visible in the test output.
     cmd.env("RUST_LOG", "debug");

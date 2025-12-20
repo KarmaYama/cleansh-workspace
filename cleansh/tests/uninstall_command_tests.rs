@@ -1,3 +1,4 @@
+// cleansh/tests/uninstall_command_tests.rs
 //! Integration tests for the `cleansh uninstall` command.
 
 use anyhow::Result;
@@ -92,8 +93,8 @@ fn test_uninstall_command_cancellation() -> Result<()> {
     // Create a dummy theme map for the uninstall command output (not directly used by assert_cmd, but good practice)
     let _theme_map = theme::ThemeStyle::default_theme_map();
 
-    // Use assert_cmd to run the cleansh executable and simulate 'n' input
-    let mut cmd = Command::cargo_bin("cleansh")?;
+    // FIX: Using assert_cmd::cargo_bin! to handle custom build directories and avoid deprecation
+    let mut cmd = Command::new(assert_cmd::cargo_bin!("cleansh"));
     cmd.arg("uninstall"); // Call the uninstall subcommand
     cmd.write_stdin("n\n"); // Simulate typing 'n' followed by a newline
 

@@ -1,3 +1,4 @@
+// cleansh/tests/stats_tests.rs
 // tests/stats_tests.rs
 use std::env;
 use std::fs;
@@ -52,7 +53,9 @@ fn get_test_paths(test_name: &str) -> anyhow::Result<TestPaths> {
 /// AppState file via an environment variable. It also **clears relevant environment variables**
 /// to ensure test isolation.
 fn run_cleansh_cmd(app_state_file: &PathBuf) -> Command {
-    let mut cmd = Command::cargo_bin("cleansh").unwrap();
+    // FIX: Using assert_cmd::cargo_bin! macro instead of deprecated cargo_bin function.
+    // This allows better resolution in custom build-dir environments.
+    let mut cmd = Command::new(assert_cmd::cargo_bin!("cleansh"));
     // Pass the test-specific app state file path via an environment variable.
     cmd.env("CLEANSH_STATE_FILE_OVERRIDE_FOR_TESTS", app_state_file.to_str().unwrap());
 

@@ -1,4 +1,4 @@
-// tests/cleansh_integration_tests.rs
+// cleansh/tests/cleansh_integration_tests.rs
 //! This file contains integration tests for the `cleansh` application.
 //!
 //! Integration tests verify the end-to-end functionality of the `cleansh` application
@@ -9,23 +9,21 @@
 //! These tests leverage `tempfile` for creating temporary configuration and output files,
 //! `anyhow` for simplified error handling, and `strip-ansi-escapes` for robust
 //! assertion against terminal output that might contain ANSI color codes.
-//! The `test_exposed` feature is used to access internal functions for testing.
 
 use anyhow::{Context, Result};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use chrono::Utc;
-use strip_ansi_escapes;
 
-use cleansh::test_exposed::commands::run_cleansh_opts;
-use cleansh::test_exposed::ui::theme::{self, ThemeEntry};
-use cleansh::test_exposed::config::{RedactionConfig, merge_rules};
+// FIX: Use cleansh_core and cleansh public modules instead of the internal test_exposed module
+// to ensure the compiler can resolve these types from the external test crate.
+use cleansh_core::config::{RedactionConfig, merge_rules, RedactionRule};
 use cleansh_core::{
     engine::SanitizationEngine,
     RegexEngine,
 };
-use cleansh::commands::cleansh::CleanshOptions;
-
+use cleansh::commands::cleansh::{run_cleansh_opts, CleanshOptions};
+use cleansh::ui::theme::{self, ThemeEntry};
 
 /// This module ensures that logging (e.g., from `pii_debug!` macro) is set up for tests.
 ///
@@ -110,9 +108,11 @@ fn create_test_engine(custom_config_path: Option<PathBuf>) -> Result<Box<dyn San
 fn test_run_cleansh_basic_sanitization() -> Result<()> {
     test_setup::setup_logger();
     let input = "email: test@example.com. My SSN is 123-45-6789.";
-    let config = cleansh::test_exposed::config::RedactionConfig {
+    
+    // FIX: Using public types directly to avoid resolution errors
+    let config = RedactionConfig {
         rules: vec![
-            cleansh::test_exposed::config::RedactionRule {
+            RedactionRule {
                 name: "email".to_string(),
                 description: Some("An email address pattern.".to_string()),
                 pattern: Some(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b".to_string()),
@@ -130,7 +130,7 @@ fn test_run_cleansh_basic_sanitization() -> Result<()> {
                 severity: Some("low".to_string()),
                 tags: Some(vec!["integration_test".to_string()]),
             },
-            cleansh::test_exposed::config::RedactionRule {
+            RedactionRule {
                 name: "us_ssn".to_string(),
                 description: Some("A US Social Security Number pattern with programmatic validation.".to_string()),
                 pattern: Some(r"\b(\d{3})-(\d{2})-(\d{4})\b".to_string()),
@@ -205,9 +205,10 @@ fn test_run_cleansh_basic_sanitization() -> Result<()> {
 fn test_run_cleansh_no_redaction_summary() -> Result<()> {
     test_setup::setup_logger();
     let input = "email: test@example.com. Invalid SSN: 000-12-3456.";
-    let config = cleansh::test_exposed::config::RedactionConfig {
+    
+    let config = RedactionConfig {
         rules: vec![
-            cleansh::test_exposed::config::RedactionRule {
+            RedactionRule {
                 name: "email".to_string(),
                 description: Some("An email address pattern.".to_string()),
                 pattern: Some(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b".to_string()),
@@ -225,7 +226,7 @@ fn test_run_cleansh_no_redaction_summary() -> Result<()> {
                 severity: Some("low".to_string()),
                 tags: Some(vec!["integration_test".to_string()]),
             },
-            cleansh::test_exposed::config::RedactionRule {
+            RedactionRule {
                 name: "us_ssn".to_string(),
                 description: Some("A US Social Security Number pattern with programmatic validation.".to_string()),
                 pattern: Some(r"\b(\d{3})-(\d{2})-(\d{4})\b".to_string()),
@@ -312,8 +313,8 @@ fn test_run_cleansh_clipboard_copy() -> Result<()> {
     }
 
     let input = "email: test@example.com";
-    let config = cleansh::test_exposed::config::RedactionConfig {
-        rules: vec![cleansh::test_exposed::config::RedactionRule {
+    let config = RedactionConfig {
+        rules: vec![RedactionRule {
             name: "email".to_string(),
             description: Some("An email address pattern.".to_string()),
             pattern: Some(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b".to_string()),
@@ -394,8 +395,8 @@ fn test_run_cleansh_clipboard_copy() -> Result<()> {
 fn test_run_cleansh_diff_output() -> Result<()> {
     test_setup::setup_logger();
     let input = "Original email: test@example.com\nAnother line.";
-    let config = cleansh::test_exposed::config::RedactionConfig {
-        rules: vec![cleansh::test_exposed::config::RedactionRule {
+    let config = RedactionConfig {
+        rules: vec![RedactionRule {
             name: "email".to_string(),
             description: Some("An email address pattern.".to_string()),
             pattern: Some(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b".to_string()),

@@ -1,3 +1,4 @@
+// cleansh/tests/integration_line_buffered.rs
 //! Integration tests for the --line-buffered mode of Cleansh.
 //!
 //! These tests focus on verifying the real-time, line-buffered input/output
@@ -42,7 +43,8 @@ fn run_cleansh_with_stdin(
     global_args: &[&str],
     subcommand_args: &[&str],
 ) -> Assert {
-    let mut cmd = Command::cargo_bin("cleansh").unwrap();
+    // FIX: Using assert_cmd::cargo_bin! to handle custom build directories and avoid deprecation
+    let mut cmd = Command::new(assert_cmd::cargo_bin!("cleansh"));
     cmd.args(global_args);
     cmd.arg("sanitize").arg("--line-buffered").args(subcommand_args);
 
@@ -56,7 +58,8 @@ fn run_cleansh_with_stdin(
 
 /// Helper to run a command with only arguments, no stdin interaction expected.
 fn run_cleansh_with_args_only(args: &[&str]) -> Assert {
-    let mut cmd = Command::cargo_bin("cleansh").unwrap();
+    // FIX: Using assert_cmd::cargo_bin! to handle custom build directories and avoid deprecation
+    let mut cmd = Command::new(assert_cmd::cargo_bin!("cleansh"));
     cmd.args(args)
        .assert()
 }
