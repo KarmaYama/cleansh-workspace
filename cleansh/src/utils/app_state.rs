@@ -76,6 +76,11 @@ impl AppState {
         // Release shared lock (will drop)
         fs2::FileExt::unlock(&f)?;
 
+        // FIX: Handle empty file gracefully (0 bytes) -> return default state silently.
+        if raw.is_empty() {
+            return Ok(AppState::new());
+        }
+
         // Try to treat file as encrypted. If parse fails, fallback to plain JSON parse.
         if let Ok(state) = decrypt_state_blob(&raw, path) {
             Ok(state)
