@@ -149,6 +149,7 @@ fn test_run_cleansh_basic_sanitization() -> Result<()> {
                 tags: Some(vec!["integration_test".to_string(), "pii".to_string()]),
             },
         ],
+        engines: Default::default(), // <--- ADDED THIS LINE
     };
 
     let temp_dir = tempfile::tempdir()?;
@@ -245,6 +246,7 @@ fn test_run_cleansh_no_redaction_summary() -> Result<()> {
                 tags: Some(vec!["integration_test".to_string(), "pii".to_string()]),
             },
         ],
+        engines: Default::default(), // <--- ADDED THIS LINE
     };
 
     let temp_dir = tempfile::tempdir()?;
@@ -332,6 +334,7 @@ fn test_run_cleansh_clipboard_copy() -> Result<()> {
             severity: Some("low".to_string()),
             tags: Some(vec!["integration_test".to_string()]),
         }],
+        engines: Default::default(), // <--- ADDED THIS LINE
     };
 
     let temp_dir = tempfile::tempdir()?;
@@ -414,6 +417,7 @@ fn test_run_cleansh_diff_output() -> Result<()> {
             severity: Some("low".to_string()),
             tags: Some(vec!["integration_test".to_string()]),
         }],
+        engines: Default::default(), // <--- ADDED THIS LINE
     };
 
     let temp_dir = tempfile::tempdir()?;

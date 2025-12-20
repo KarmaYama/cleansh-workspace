@@ -6,7 +6,7 @@
 
 > CleanSH (clean shell) is a high‑trust, single‑purpose CLI tool designed to sanitize terminal output for safe sharing.
 > It prioritizes security by default, requires zero configuration to get started, and offers extendability when needed.
-> The project is in active development, with **`v0.1.9/10`** bringing significant enhancements to redaction accuracy, security, and user control.
+> The project is in active development, with **`v0.1.11`** bringing significant enhancements to redaction accuracy, security, and user control.
 > We value your feedback. Please report any issues you encounter. Star the repository if you like it!
 
 ---
