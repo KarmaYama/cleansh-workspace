@@ -1,12 +1,11 @@
+extern crate alloc;
 use crate::entropy::calculate_shannon_entropy;
 use crate::statistics::{compute_stats, EntropyStats};
 
 /// Configuration for the dynamic entropy scanner.
 #[derive(Debug, Clone)]
 pub struct AnomalyScannerConfig {
-    /// The number of standard deviations from the mean to consider a token an anomaly.
     pub z_score_threshold: f64,
-    /// The size of the sliding window used to calculate baseline entropy.
     pub window_chunk_size: usize, 
 }
 
@@ -19,7 +18,7 @@ impl Default for AnomalyScannerConfig {
     }
 }
 
-/// Detailed result of an entropy anomaly check.
+/// Result of an anomaly check.
 #[derive(Debug, Clone)]
 pub struct AnomalyResult {
     pub is_anomaly: bool,
@@ -44,7 +43,6 @@ pub struct ScanResult<'a> {
 }
 
 impl<'a> Scanner<'a> {
-    /// Create a new scanner with default configuration.
     pub fn new(input: &'a str) -> Self {
         Self {
             input,
@@ -53,7 +51,6 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    /// Create a new scanner with a custom configuration.
     pub fn with_config(input: &'a str, config: AnomalyScannerConfig) -> Self {
         Self {
             input,
@@ -82,7 +79,7 @@ impl<'a> Iterator for Scanner<'a> {
     }
 }
 
-/// Checks if a specific byte slice (token) is a statistical anomaly compared to a larger context.
+/// Checks if a token is a statistical anomaly compared to its context.
 pub fn scan_token_against_context(
     token: &[u8],
     context: &[u8],
@@ -91,7 +88,6 @@ pub fn scan_token_against_context(
     let token_entropy = calculate_shannon_entropy(token);
     let token_len = token.len();
     
-    // Safety check for empty inputs or context smaller than token
     if token_len == 0 || context.len() < token_len {
         return AnomalyResult {
             is_anomaly: false,
@@ -104,14 +100,11 @@ pub fn scan_token_against_context(
     let mut context_entropies = [0.0; 128]; 
     let mut sample_count = 0;
 
-    // Use window_chunk_size if provided, otherwise default to token length
     let step = if config.window_chunk_size > 0 { config.window_chunk_size } else { token_len };
-    let chunks = context.chunks(step);
+    let mut chunks = context.chunks(step);
     
-    for chunk in chunks {
+    while let Some(chunk) = chunks.next() {
         if sample_count >= 128 { break; }
-        // We only sample chunks that are at least half the length of the target token
-        // to prevent small trailing fragments from skewing the mean.
         if chunk.len() >= token_len / 2 {
              context_entropies[sample_count] = calculate_shannon_entropy(chunk);
              sample_count += 1;
@@ -123,7 +116,6 @@ pub fn scan_token_against_context(
     let z_score = if stats.std_dev > 0.0 {
         (token_entropy - stats.mean) / stats.std_dev
     } else {
-        // If there is no variance in the context, any higher entropy is an anomaly.
         if token_entropy > stats.mean { 100.0 } else { 0.0 }
     };
 
@@ -138,21 +130,23 @@ pub fn scan_token_against_context(
 #[cfg(test)]
 mod tests {
     use super::*;
+    // Explicitly import alloc requirements for no_std tests
+    use alloc::vec;
+    use alloc::vec::Vec;
 
     #[test]
     fn test_anomaly_detection_natural_language() {
-        // Natural language has low entropy (~3.5-4.5 bits). 
-        // 8x9#bF2!kL*zZ is extremely high entropy (~6 bits).
+        // Natural language baseline with high-randomness token
         let text = "This is a normal sentence with a secret token 8x9#bF2!kL*zZ inside it.";
         let mut config = AnomalyScannerConfig::default();
-        config.z_score_threshold = 2.0; // Lower threshold to ensure detection in short context
+        config.z_score_threshold = 2.0; 
         
         let scanner = Scanner::with_config(text, config);
         
         let mut found_anomaly = false;
         for result in scanner {
             if result.token == "8x9#bF2!kL*zZ" {
-                assert!(result.is_anomaly, "High-entropy token should be detected as anomaly. Z-score: {}", result.z_score);
+                assert!(result.is_anomaly, "High-entropy token should be detected as anomaly (Z-score: {})", result.z_score);
                 found_anomaly = true;
             }
         }
@@ -161,7 +155,6 @@ mod tests {
 
     #[test]
     fn test_anomaly_rejection_high_entropy_context() {
-        // If the context is already random (hex strings), no specific token should stand out.
         let context = b"a4f5b2c1 d9e8f7a6 1b2c3d4e 5f6a7b8c 9d0e1f2a 3b4c5d6e";
         let token = b"7a8b9c0d"; 
 
@@ -171,7 +164,7 @@ mod tests {
         };
 
         let result = scan_token_against_context(token, context, &config);
-        assert!(!result.is_anomaly, "Token should not be an anomaly in a high-entropy environment");
+        assert!(!result.is_anomaly);
     }
 
     #[test]

@@ -6,7 +6,7 @@
 //! associated user data (such as configuration and application state files).
 //! It includes user confirmation and platform-specific logic to ensure proper cleanup.
 
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result}; // Removed unused 'anyhow' macro
 use std::path::PathBuf;
 use std::io::{self, Write};
 use std::process::Command;
@@ -242,7 +242,7 @@ Remove-Item -Path $MyInvocation.MyCommand.Path -Force
         };
 
         if (res as usize) <= 32 {
-            return Err(anyhow!("Failed to launch uninstaller (ShellExecute error: {})", res as usize));
+            return Err(anyhow::anyhow!("Failed to launch uninstaller (ShellExecute error: {})", res as usize));
         }
     }
 
