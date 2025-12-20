@@ -1,9 +1,8 @@
 # cleansh/Cargo.toml
 [package]
 name = "cleansh"
-version = "0.1.8"
+version = "0.1.9"
 edition = "2024"
-# build = "build.rs" <--- Removed
 publish = true
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/KarmaYama/cleansh-workspace"

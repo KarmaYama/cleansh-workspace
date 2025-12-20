@@ -1,57 +1,57 @@
+// cleansh/src/commands/uninstall.rs
 //! Cleansh Uninstallation Command (`uninstall`).
 //!
-//! This module implements the `cleansh uninstall` command, providing a mechanism
-//! for the self-deletion of the Cleansh application and the removal of its
-//! associated user data (such as configuration and application state files).
-//! It includes user confirmation and platform-specific logic to ensure proper cleanup.
+//! This module implements the `cleansh uninstall` command.
 
 use anyhow::{Context, Result, anyhow};
 use std::path::PathBuf;
 use std::io::{self, Write};
-use std::process::{Command, Stdio};
+use std::process::Command;
 use std::env;
-use std::thread;
-use std::time::Duration;
-use log::{info, debug};
+use log::info;
 use is_terminal::IsTerminal;
-use std::ffi::{OsStr, OsString};
-use std::os::windows::prelude::*;
-use std::os::windows::ffi::OsStringExt;
-use std::fs::File;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
-// Correct WinAPI imports for direct process elevation
+// Platform-specific imports (Windows Only)
+#[cfg(target_os = "windows")]
+use std::fs::File;
+#[cfg(target_os = "windows")]
+use std::ffi::{OsStr, OsString};
+#[cfg(target_os = "windows")]
+use std::os::windows::ffi::OsStrExt;
+#[cfg(target_os = "windows")]
+use std::os::windows::ffi::OsStringExt;
 #[cfg(target_os = "windows")]
 use winapi::um::shellapi::ShellExecuteW;
 #[cfg(target_os = "windows")]
 use winapi::um::winuser::SW_SHOWNORMAL;
 #[cfg(target_os = "windows")]
-use winapi::um::fileapi::{GetTempPathW, GetTempFileNameW};
+use winapi::um::fileapi::GetTempPathW;
+
+// Platform-specific imports (Unix Only)
+#[cfg(not(target_os = "windows"))]
+use std::process::Stdio;
 
 use crate::ui::{output_format, theme};
 use crate::commands::cleansh::info_msg;
 use crate::ui::theme::ThemeMap;
 
-// Global counter to prevent infinite loops in specific scenarios
-static ELEVATION_ATTEMPTS: AtomicUsize = AtomicUsize::new(0);
-
-/// Helper function to convert a Rust OsString to a wide string for WinAPI.
+/// Helper function to convert a Rust string to a wide string for WinAPI.
 #[cfg(target_os = "windows")]
-fn to_wide_string(s: &OsStr) -> Vec<u16> {
-    s.encode_wide().chain(Some(0)).collect()
+fn to_wide_string(s: &str) -> Vec<u16> {
+    OsStr::new(s).encode_wide().chain(Some(0)).collect()
 }
 
-/// Performs a Windows-specific check to see if the process is running as an administrator.
+/// Helper to check elevation on Windows.
 #[cfg(target_os = "windows")]
 fn is_elevated() -> bool {
     unsafe {
         use winapi::um::handleapi::CloseHandle;
         use winapi::um::processthreadsapi::{GetCurrentProcess, OpenProcessToken};
         use winapi::um::securitybaseapi::GetTokenInformation;
-        use winapi::um::winnt::{TokenElevation, TOKEN_ELEVATION};
+        use winapi::um::winnt::{TokenElevation, TOKEN_ELEVATION, TOKEN_QUERY};
         
         let mut token_handle = std::ptr::null_mut();
-        if OpenProcessToken(GetCurrentProcess(), winapi::um::winnt::TOKEN_QUERY, &mut token_handle) == 0 {
+        if OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token_handle) == 0 {
             return false;
         }
 
@@ -66,79 +66,15 @@ fn is_elevated() -> bool {
         ) != 0;
 
         CloseHandle(token_handle);
-        
-        if success {
-            return elevation.TokenIsElevated != 0;
-        }
-
-        false
+        success && elevation.TokenIsElevated != 0
     }
 }
 
-/// A dedicated function to handle elevation and uninstallation on Windows.
-/// This is called directly from `main.rs` to ensure the logic flow is clean.
-#[cfg(target_os = "windows")]
 pub fn elevate_and_run_uninstall(yes_flag: bool, theme_map: &ThemeMap) -> Result<()> {
-    if is_elevated() {
-        // If already elevated, proceed directly to the uninstallation logic
-        run_uninstaller_logic(yes_flag, theme_map)?;
-    } else {
-        let attempts = ELEVATION_ATTEMPTS.fetch_add(1, Ordering::SeqCst);
-        if attempts > 1 {
-            return Err(anyhow!("Failed to elevate and run uninstallation. Exiting to prevent infinite loop."));
-        }
-
-        info_msg("Attempting to elevate for uninstallation...", theme_map);
-        let exe_path = env::current_exe()?;
-        let exe_path_wide: Vec<u16> = exe_path.to_str().unwrap().encode_utf16().chain(Some(0)).collect();
-        
-        // Pass original arguments and the uninstaller flag
-        let mut args: Vec<String> = env::args().skip(1).collect();
-
-        // Add the --yes flag to ensure the elevated process doesn't prompt for confirmation again.
-        if yes_flag && !args.contains(&"--yes".to_string()) {
-            args.push("--yes".to_string());
-        }
-
-        let args_string = args.join(" ");
-        let args_wide: Vec<u16> = args_string.encode_utf16().chain(Some(0)).collect();
-
-        let operation = "runas".encode_utf16().chain(Some(0)).collect::<Vec<u16>>();
-        
-        let result = unsafe {
-            ShellExecuteW(
-                std::ptr::null_mut(),
-                operation.as_ptr(),
-                exe_path_wide.as_ptr(),
-                args_wide.as_ptr(),
-                std::ptr::null(),
-                SW_SHOWNORMAL,
-            )
-        };
-
-        if result as usize <= 32 {
-            let err_code = io::Error::last_os_error();
-            if err_code.raw_os_error() == Some(5) {
-                // 5 is ERROR_ACCESS_DENIED, which is the UAC dialog being cancelled.
-                return Err(anyhow!("Uninstallation cancelled by user."));
-            }
-            return Err(anyhow!("Failed to relaunch with admin privileges. ShellExecuteW failed with error code: {}. OS Error: {}", result as isize, err_code));
-        }
-        
-        // The original process must exit immediately after launching the new one.
-        std::process::exit(0);
-    }
-    Ok(())
-}
-
-
-/// The core uninstallation logic that runs once the process is elevated.
-fn run_uninstaller_logic(yes_flag: bool, theme_map: &ThemeMap) -> Result<()> {
     info!("Starting cleansh uninstall operation.");
-    debug!("[uninstall.rs] Uninstall command initiated.");
     let stderr_supports_color = io::stderr().is_terminal();
 
-    // --- 1. User Confirmation (if not running with --yes) ---
+    // --- 1. User Confirmation ---
     if !yes_flag {
         info_msg("WARNING: This will uninstall Cleansh and remove its associated data.", theme_map);
         output_format::print_message(
@@ -159,231 +95,176 @@ fn run_uninstaller_logic(yes_flag: bool, theme_map: &ThemeMap) -> Result<()> {
             return Ok(());
         }
     }
-    
+
     // --- 2. Determine Paths ---
     let current_exe_path = env::current_exe()
         .context("Failed to determine current executable path.")?;
-    debug!("[uninstall.rs] Current executable path: {:?}", current_exe_path);
-
-    let app_state_file_path = std::env::var("CLEANSH_STATE_FILE_OVERRIDE_FOR_TESTS")
+    
+    // Resolve app state path
+    let app_state_path = std::env::var("CLEANSH_STATE_FILE_OVERRIDE_FOR_TESTS")
         .map(PathBuf::from)
         .unwrap_or_else(|_| {
-            if let Some(mut path) = dirs::data_dir() {
-                path.push("cleansh");
-                path.push("state.json");
-                path
+            if let Some(dir) = dirs::data_dir() {
+                dir.join("cleansh").join("state.json")
             } else {
-                debug!("[uninstall.rs] Data directory not found, defaulting to current directory.");
-                PathBuf::from("cleansh_state.json")
+                env::current_dir().expect("Failed to get current dir").join("cleansh_state.json")
             }
         });
+    let app_state_dir = app_state_path.parent().unwrap_or(&PathBuf::from(".")).to_path_buf();
 
-    let app_state_dir = app_state_file_path.parent()
-        .map(PathBuf::from)
-        .unwrap_or_else(|| {
-            debug!("[uninstall.rs] Could not determine parent directory for app state file. Defaulting to current directory.");
-            PathBuf::from(".")
-        });
-    debug!("[uninstall.rs] App state directory: {:?}", app_state_dir);
-    
-    // --- 3. Spawn Platform-Specific Helper for Self-Deletion ---
-    info_msg("Initiating self-deletion process...", theme_map);
+    info_msg("Preparing removal script...", theme_map);
 
     #[cfg(target_os = "windows")]
     {
-        // Get a temporary file path for the helper script
-        let mut temp_path_buf = vec![0u16; 260];
-        let temp_path_len = unsafe { GetTempPathW(temp_path_buf.len() as u32, temp_path_buf.as_mut_ptr()) };
-        let temp_dir = PathBuf::from(OsString::from_wide(&temp_path_buf[0..temp_path_len as usize]));
-
-        let mut temp_file_path_buf = vec![0u16; 260];
-        unsafe { GetTempFileNameW(temp_dir.as_os_str().encode_wide().chain(Some(0)).collect::<Vec<_>>().as_ptr(), to_wide_string(OsStr::new("ps1")).as_ptr(), 0, temp_file_path_buf.as_mut_ptr()) };
-        let temp_ps1_path = PathBuf::from(OsString::from_wide(&temp_file_path_buf));
-        debug!("[uninstall.rs] Generated temporary PowerShell script path: {:?}", temp_ps1_path);
-        
-        let current_pid = std::process::id();
-        let current_exe_path_string = current_exe_path.to_string_lossy().replace("'", "''");
-        let app_state_file_path_string = app_state_file_path.to_string_lossy().replace("'", "''");
-        let app_state_dir_string = app_state_dir.to_string_lossy().replace("'", "''");
-        let log_file_string = temp_dir.join(format!("cleansh_uninstall_{}.log", current_pid)).to_string_lossy().replace("'", "''");
-        
-        let powershell_script = format!(
-            r#"
-            # This script runs in a new process to delete the original executable and data.
-            $pidToWait = {}
-            $logFile = "{}"
-            $exePath = "{}"
-            $appStateFile = "{}"
-            $appStateDir = "{}"
-
-            function Log($m){{ "$((Get-Date).ToString('s')) - $m" | Out-File -FilePath $logFile -Append -Encoding utf8 }}
-
-            Log "Helper script started. Target exe: $exePath"
-            
-            # Wait for the original cleansh process to exit
-            Log "Waiting for process $pidToWait to exit..."
-            try {{
-                # Wait for up to 30 seconds for the original process to terminate
-                Wait-Process -Id $pidToWait -Timeout 30 -ErrorAction Stop
-                Log "Original process exited successfully."
-            }} catch {{
-                Log "Original process already exited or was not found, proceeding with uninstallation."
-            }}
-            
-            # Increase wait time to ensure file handles are released
-            Start-Sleep -Seconds 2
-
-            # Try to delete the executable repeatedly with a longer sleep interval
-            $deletionAttemptSucceeded = $false
-            for ($i=0; $i -lt 30; $i++) {{
-                try {{
-                    if (Test-Path $exePath) {{
-                        Remove-Item -Path $exePath -Force -ErrorAction Stop
-                        Log "Executable deleted successfully on attempt $i."
-                        $deletionAttemptSucceeded = $true
-                        break
-                    }} else {{
-                        Log "Executable not found, skipping file deletion."
-                        $deletionAttemptSucceeded = $true
-                        break
-                    }}
-                }} catch {{
-                    Log "Attempt $i: Failed to delete exe: $($_.Exception.Message)"
-                    Start-Sleep -Seconds 1
-                }}
-            }}
-
-            if (-not $deletionAttemptSucceeded) {{
-                Log "Exe still present after multiple attempts. Scheduling deletion on next reboot."
-                Add-Type -TypeDefinition @"
-                using System;
-                using System.Runtime.InteropServices;
-                public class M {{
-                    [DllImport("kernel32.dll", SetLastError=true, CharSet=CharSet.Unicode)]
-                    public static extern bool MoveFileEx(string lpExistingFileName, string lpNewFileName, int dwFlags);
-                }}
-                "@
-                [M]::MoveFileEx($exePath, $null, 0x4) | Out-Null
-                if ($LASTEXITCODE -ne 0) {{
-                    Log "Failed to schedule deletion via MoveFileEx. OS Error Code: $LASTEXITCODE"
-                }} else {{
-                    Log "Scheduled deletion via MoveFileEx successfully."
-                }}
-            }}
-
-            # Remove app state
-            try {{
-                if (Test-Path $appStateFile) {{ Remove-Item -Path $appStateFile -Force -ErrorAction Stop; Log "App state file deleted." }}
-                if (Test-Path $appStateDir) {{ Remove-Item -Path $appStateDir -Recurse -Force -ErrorAction Stop; Log "App state dir deleted." }}
-            }} catch {{ Log "Failed deleting app-state: $($_.Exception.Message)" }}
-
-            Log "Helper script finished."
-            Write-Output "Log file: $logFile"
-
-            # Clean up the helper script itself
-            Remove-Item -Path '{}' -Force -ErrorAction SilentlyContinue
-            "#,
-            current_pid,
-            log_file_string,
-            current_exe_path_string,
-            app_state_file_path_string,
-            app_state_dir_string,
-            temp_ps1_path.to_string_lossy().replace("'", "''")
-        );
-        
-        let mut file = File::create(&temp_ps1_path)
-            .context("Failed to create temporary PowerShell script.")?;
-        file.write_all(powershell_script.as_bytes())
-            .context("Failed to write to temporary PowerShell script.")?;
-        
-        let mut command = Command::new("powershell.exe");
-        command.arg("-NoProfile")
-            .arg("-NonInteractive")
-            .arg("-ExecutionPolicy").arg("Bypass")
-            .arg("-File").arg(&temp_ps1_path)
-            .stdin(Stdio::null())
-            .stdout(Stdio::inherit())
-            .stderr(Stdio::inherit());
-
-        command.spawn()
-            .context("Failed to spawn PowerShell process for uninstallation.")?;
+        uninstall_windows(current_exe_path, app_state_path, app_state_dir, theme_map)?;
     }
 
     #[cfg(not(target_os = "windows"))]
     {
-        let bash_script = format!(
-            r#"
-            #!/bin/bash
-            sleep 1
-            exe_path="{}"
-            app_state_file="{}"
-            app_state_dir="{}"
-
-            echo "Attempting to delete executable: $exe_path"
-            rm -f "$exe_path"
-            if [ $? -ne 0 ]; then
-                echo "Error: Failed to delete executable: $exe_path" >&2
-                exit 1
-            fi
-            echo "Executable deleted successfully."
-
-            echo "Attempting to delete app state file: $app_state_file"
-            if [ -f "$app_state_file" ]; then
-                rm -f "$app_state_file"
-                if [ $? -ne 0 ]; then
-                    echo "Error: Failed to delete app state file: $app_state_file" >&2
-                    exit 1
-                fi
-                echo "App state file deleted successfully."
-            else
-                echo "App state file not found, skipping deletion."
-            fi
-
-            echo "Attempting to delete app state directory: $app_state_dir"
-            if [ -d "$app_state_dir" ]; then
-                rmdir "$app_state_dir" 2>/dev/null || true
-                if [ $? -ne 0 ]; then
-                    echo "Warning: App state directory '$app_state_dir' might not be empty or could not be removed." >&2
-                else
-                    echo "App state directory deleted successfully."
-                fi
-            else
-                echo "App state directory not found, skipping deletion."
-            fi
-
-            echo "Cleansh uninstallation complete."
-            exit 0
-            "#,
-            current_exe_path.to_string_lossy(),
-            app_state_file_path.to_string_lossy(),
-            app_state_dir.to_string_lossy()
-        );
-
-        debug!("[uninstall.rs] Bash script to execute:\n{}", bash_script);
-
-        let mut command = Command::new("bash");
-        command.arg("-c")
-                .arg(&bash_script)
-                .stdin(Stdio::null())
-                .stdout(Stdio::inherit())
-                .stderr(Stdio::inherit());
-
-        command.spawn()
-            .context("Failed to spawn bash process for uninstallation.")?;
+        uninstall_unix(current_exe_path, app_state_path, app_state_dir, theme_map)?;
     }
 
-    // Give the helper process a moment to detach before the main process exits
-    thread::sleep(Duration::from_millis(100));
+    Ok(())
+}
 
-    info_msg("Cleansh is being uninstalled. You can close this terminal.", theme_map);
+#[cfg(target_os = "windows")]
+fn uninstall_windows(exe_path: PathBuf, state_file: PathBuf, state_dir: PathBuf, theme_map: &ThemeMap) -> Result<()> {
+    // 1. Generate Temp Script Path
+    let mut temp_path_buf = vec![0u16; 260];
+    let temp_path_len = unsafe { GetTempPathW(temp_path_buf.len() as u32, temp_path_buf.as_mut_ptr()) };
+    
+    // We now have OsStringExt in scope, so this works:
+    let temp_dir = PathBuf::from(OsString::from_wide(&temp_path_buf[0..temp_path_len as usize]));
+    let script_path = temp_dir.join(format!("cleansh_nuke_{}.ps1", std::process::id()));
 
-    // Exit the current process immediately so the helper can delete the executable
+    // 2. Generate PowerShell Script Content
+    let current_pid = std::process::id();
+    let script_content = format!(
+        r#"
+$pidToWait = {}
+$exePath = "{}"
+$stateFile = "{}"
+$stateDir = "{}"
+
+Write-Host "Waiting for Cleansh (PID: $pidToWait) to exit..." -ForegroundColor Cyan
+try {{
+    Wait-Process -Id $pidToWait -Timeout 10 -ErrorAction SilentlyContinue
+}} catch {{
+    # Process might already be gone
+}}
+
+# Ensure file handle release
+Start-Sleep -Seconds 1
+
+Write-Host "Deleting executable..." -ForegroundColor Yellow
+$deleted = $false
+for ($i=0; $i -lt 10; $i++) {{
+    try {{
+        if (Test-Path $exePath) {{
+            Remove-Item -Path $exePath -Force -ErrorAction Stop
+            $deleted = $true
+            break
+        }} else {{
+            $deleted = $true # Already gone
+            break
+        }}
+    }} catch {{
+        Write-Host "Attempt $($i+1): Locked... retrying..."
+        Start-Sleep -Seconds 1
+    }}
+}}
+
+if (-not $deleted) {{
+    Write-Host "Could not delete executable. It may be locked." -ForegroundColor Red
+    Write-Host "Please delete manually: $exePath"
+}} else {{
+    Write-Host "Executable deleted." -ForegroundColor Green
+}}
+
+# Clean Configs
+if (Test-Path $stateFile) {{ Remove-Item -Path $stateFile -Force; Write-Host "State file removed." }}
+if (Test-Path $stateDir) {{ 
+    # Only remove if empty or force if desired. Here we recurse.
+    Remove-Item -Path $stateDir -Recurse -Force -ErrorAction SilentlyContinue 
+    Write-Host "Config directory removed."
+}}
+
+Write-Host "Uninstallation Complete." -ForegroundColor Green
+Start-Sleep -Seconds 3
+# Self-destruct script
+Remove-Item -Path $MyInvocation.MyCommand.Path -Force
+"#,
+        current_pid,
+        exe_path.to_string_lossy(),
+        state_file.to_string_lossy(),
+        state_dir.to_string_lossy()
+    );
+
+    // 3. Write Script
+    let mut file = File::create(&script_path).context("Failed to create temporary uninstall script")?;
+    file.write_all(script_content.as_bytes())?;
+
+    // 4. Execute Script
+    let script_path_str = script_path.to_string_lossy().to_string();
+    
+    if is_elevated() {
+        info_msg("Running cleanup script...", theme_map);
+        // We do not need Stdio::null here because we want to see the PS window
+        Command::new("powershell.exe")
+            .args(&["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", &script_path_str])
+            .spawn()
+            .context("Failed to spawn cleanup script")?;
+    } else {
+        info_msg("Requesting administrative privileges to complete removal...", theme_map);
+        
+        let operation = to_wide_string("runas");
+        let filename = to_wide_string("powershell.exe");
+        let args = to_wide_string(&format!("-NoProfile -ExecutionPolicy Bypass -File \"{}\"", script_path_str));
+
+        let res = unsafe {
+            ShellExecuteW(
+                std::ptr::null_mut(),
+                operation.as_ptr(),
+                filename.as_ptr(),
+                args.as_ptr(),
+                std::ptr::null(),
+                SW_SHOWNORMAL,
+            )
+        };
+
+        if (res as usize) <= 32 {
+            return Err(anyhow!("Failed to launch uninstaller (ShellExecute error: {})", res as usize));
+        }
+    }
+
+    // 5. Exit Immediately
     std::process::exit(0);
 }
 
-/// The public entry point for the uninstall command. It determines if elevation is needed.
 #[cfg(not(target_os = "windows"))]
-pub fn elevate_and_run_uninstall(yes_flag: bool, theme_map: &ThemeMap) -> Result<()> {
-    // For non-Windows systems, no elevation is needed.
-    run_uninstaller_logic(yes_flag, theme_map)
+fn uninstall_unix(exe_path: PathBuf, state_file: PathBuf, state_dir: PathBuf, theme_map: &ThemeMap) -> Result<()> {
+    let bash_script = format!(
+        r#"
+        sleep 1
+        rm -f "{}"
+        rm -f "{}"
+        rm -rf "{}"
+        echo "CleanSH uninstalled."
+        "#,
+        exe_path.to_string_lossy(),
+        state_file.to_string_lossy(),
+        state_dir.to_string_lossy()
+    );
+
+    Command::new("sh")
+        .arg("-c")
+        .arg(bash_script)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .context("Failed to spawn uninstall script")?;
+
+    info_msg("Uninstallation scheduled. Exiting...", theme_map);
+    std::process::exit(0);
 }
