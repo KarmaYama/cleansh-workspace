@@ -4,15 +4,12 @@
 
 use anyhow::Result;
 // FIX: Use cleansh_core directly as it is a public dependency.
-// This avoids the "could not find test_exposed" error.
 use cleansh_core::config::{RedactionConfig, RedactionRule, MAX_PATTERN_LENGTH};
 use cleansh_core::{engine::SanitizationEngine, RegexEngine};
 use chrono::Utc;
 use uuid::Uuid;
 use sha2::{Sha256, Digest};
 
-/// This block ensures that logging (e.g., from pii_debug! macro) is set up for tests.
-/// It initializes env_logger exactly once per test run.
 #[allow(unused_imports)]
 #[cfg(test)]
 mod test_setup {
@@ -29,7 +26,6 @@ mod test_setup {
     }
 }
 
-/// Helper to create a basic rule for testing
 fn create_test_rule(
     name: &str,
     pattern: &str,
@@ -60,7 +56,6 @@ fn create_test_rule(
     }
 }
 
-/// Helper function to filter rules based on opt-in/disabled lists
 fn filter_rules(
     rules: Vec<RedactionRule>,
     enabled: &[String],
@@ -87,7 +82,7 @@ fn test_compile_rules_basic() -> Result<()> {
         create_test_rule("email", r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b", "[EMAIL]", false, None, false, false, false),
         create_test_rule("ip", r"\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b", "[IP]", false, None, false, false, false),
     ];
-    let config = RedactionConfig { rules: rules_vec };
+    let config = RedactionConfig { rules: rules_vec, engines: Default::default() }; // Added engines
     let engine = RegexEngine::new(config)?;
     assert_eq!(engine.get_rules().rules.len(), 2);
     Ok(())
@@ -101,7 +96,7 @@ fn test_compile_rules_opt_in_not_enabled() -> Result<()> {
         create_test_rule("aws_key", "AKIA[A-Z0-9]{16}", "[AWS_KEY]", true, None, false, false, false),
     ];
     let filtered_rules = filter_rules(rules_vec, &[], &[]);
-    let config = RedactionConfig { rules: filtered_rules };
+    let config = RedactionConfig { rules: filtered_rules, engines: Default::default() }; // Added engines
     let engine = RegexEngine::new(config)?;
     assert_eq!(engine.get_rules().rules.len(), 1);
     assert_eq!(engine.get_rules().rules[0].name, "email");
@@ -115,7 +110,7 @@ fn test_compile_rules_opt_in_missing_returns_empty() -> Result<()> {
         create_test_rule("secret_key", r"secret_\w+", "[REDACTED]", true, None, false, false, false),
     ];
     let filtered_rules = filter_rules(rules_vec, &[], &[]);
-    let config = RedactionConfig { rules: filtered_rules };
+    let config = RedactionConfig { rules: filtered_rules, engines: Default::default() }; // Added engines
     let engine = RegexEngine::new(config)?;
     assert_eq!(engine.get_rules().rules.len(), 0);
     Ok(())
@@ -129,7 +124,7 @@ fn test_compile_rules_opt_in_enabled() -> Result<()> {
         create_test_rule("aws_key", "AKIA[A-Z0-9]{16}", "[AWS_KEY]", true, None, false, false, false),
     ];
     let filtered_rules = filter_rules(rules_vec, &["aws_key".to_string()], &[]);
-    let config = RedactionConfig { rules: filtered_rules };
+    let config = RedactionConfig { rules: filtered_rules, engines: Default::default() }; // Added engines
     let engine = RegexEngine::new(config)?;
     assert_eq!(engine.get_rules().rules.len(), 2);
     assert!(engine.get_rules().rules.iter().any(|r| r.name == "aws_key"));
@@ -144,7 +139,7 @@ fn test_compile_rules_disabled() -> Result<()> {
         create_test_rule("aws_key", "AKIA[A-Z0-9]{16}", "[AWS_KEY]", true, None, false, false, false),
     ];
     let filtered_rules = filter_rules(rules_vec, &["aws_key".to_string()], &["email".to_string()]);
-    let config = RedactionConfig { rules: filtered_rules };
+    let config = RedactionConfig { rules: filtered_rules, engines: Default::default() }; // Added engines
     let engine = RegexEngine::new(config)?;
     assert_eq!(engine.get_rules().rules.len(), 1);
     assert_eq!(engine.get_rules().rules[0].name, "aws_key");
@@ -158,7 +153,7 @@ fn test_compile_rules_opt_in_and_disabled_conflict() -> Result<()> {
         create_test_rule("sensitive_data", "sensitive_text", "[REDACTED]", true, None, false, false, false),
     ];
     let filtered_rules = filter_rules(rules_vec, &["sensitive_data".to_string()], &["sensitive_data".to_string()]);
-    let config = RedactionConfig { rules: filtered_rules };
+    let config = RedactionConfig { rules: filtered_rules, engines: Default::default() }; // Added engines
     let engine = RegexEngine::new(config)?;
     assert_eq!(engine.get_rules().rules.len(), 0);
     Ok(())
@@ -169,7 +164,7 @@ fn test_overlapping_rules_priority() -> Result<()> {
     test_setup::setup_logger();
     let rule_email = create_test_rule("email", r"(\w+)@example\.com", "[EMAIL]", false, None, false, false, false);
     let rule_generic = create_test_rule("example_match", r"example\.com", "[DOMAIN]", false, None, false, false, false);
-    let config = RedactionConfig { rules: vec![rule_email, rule_generic] };
+    let config = RedactionConfig { rules: vec![rule_email, rule_generic], engines: Default::default() }; // Added engines
     let engine = RegexEngine::new(config)?;
 
     let input = "user@example.com";
@@ -185,7 +180,7 @@ fn test_overlapping_rules_priority() -> Result<()> {
 fn test_sanitize_content_basic() -> Result<()> {
     test_setup::setup_logger();
     let rule = create_test_rule("email", r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b", "[EMAIL_REDACTED]", false, None, false, false, false);
-    let config = RedactionConfig { rules: vec![rule] };
+    let config = RedactionConfig { rules: vec![rule], engines: Default::default() }; // Added engines
     let engine = RegexEngine::new(config)?;
 
     let input = "My email is test@example.com.";
@@ -201,7 +196,7 @@ fn test_sanitize_content_basic() -> Result<()> {
 fn test_sanitize_content_multiple_matches_same_rule() -> Result<()> {
     test_setup::setup_logger();
     let rule = create_test_rule("email", r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b", "[EMAIL_REDACTED]", false, None, false, false, false);
-    let config = RedactionConfig { rules: vec![rule] };
+    let config = RedactionConfig { rules: vec![rule], engines: Default::default() }; // Added engines
     let engine = RegexEngine::new(config)?;
 
     let input = "test1@example.com and test2@example.com.";
@@ -222,7 +217,7 @@ fn test_sanitize_content_multiple_rules() -> Result<()> {
     let email_rule = create_test_rule("email", r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b", "[EMAIL]", false, None, false, false, false);
     let ip_rule = create_test_rule("ipv4_address", r"\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b", "[IPV4]", false, None, false, false, false);
 
-    let config = RedactionConfig { rules: vec![email_rule, ip_rule] };
+    let config = RedactionConfig { rules: vec![email_rule, ip_rule], engines: Default::default() }; // Added engines
     let engine = RegexEngine::new(config)?;
 
     let input = "Email: a@b.com, IP: 192.168.1.1.";
@@ -238,7 +233,7 @@ fn test_sanitize_content_multiple_rules() -> Result<()> {
 fn test_sanitize_content_with_ansi_escapes() -> Result<()> {
     test_setup::setup_logger();
     let rule = create_test_rule("email", r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b", "[EMAIL]", false, None, false, false, false);
-    let config = RedactionConfig { rules: vec![rule] };
+    let config = RedactionConfig { rules: vec![rule], engines: Default::default() }; // Added engines
     let engine = RegexEngine::new(config)?;
 
     let input_with_ansi = "Hello \x1b[31mtest@example.com\x1b[0m world.";
@@ -262,7 +257,7 @@ fn test_us_ssn_programmatic_validation_valid() -> Result<()> {
         false, None, false, false,
         true,
     );
-    let config = RedactionConfig { rules: vec![rule] };
+    let config = RedactionConfig { rules: vec![rule], engines: Default::default() }; // Added engines
     let engine = RegexEngine::new(config)?;
 
     let text_valid = "My SSN is 123-45-6789. Another is 789-12-3456.";
@@ -284,7 +279,7 @@ fn test_us_ssn_programmatic_validation_invalid_area_000() -> Result<()> {
         false, None, false, false,
         true,
     );
-    let config = RedactionConfig { rules: vec![rule] };
+    let config = RedactionConfig { rules: vec![rule], engines: Default::default() }; // Added engines
     let engine = RegexEngine::new(config)?;
 
     let text_invalid_area_000 = "Invalid SSN: 000-12-3456.";
@@ -306,7 +301,7 @@ fn test_us_ssn_programmatic_validation_invalid_area_666() -> Result<()> {
         false, None, false, false,
         true,
     );
-    let config = RedactionConfig { rules: vec![rule] };
+    let config = RedactionConfig { rules: vec![rule], engines: Default::default() }; // Added engines
     let engine = RegexEngine::new(config)?;
 
     let text_invalid_area_666 = "Another invalid: 666-78-9012.";
@@ -328,7 +323,7 @@ fn test_us_ssn_programmatic_validation_invalid_area_9xx() -> Result<()> {
         false, None, false, false,
         true,
     );
-    let config = RedactionConfig { rules: vec![rule] };
+    let config = RedactionConfig { rules: vec![rule], engines: Default::default() }; // Added engines
     let engine = RegexEngine::new(config)?;
 
     let text_invalid_area_9xx = "Area 9: 900-11-2222.";
@@ -350,7 +345,7 @@ fn test_us_ssn_programmatic_validation_invalid_group_00() -> Result<()> {
         false, None, false, false,
         true,
     );
-    let config = RedactionConfig { rules: vec![rule] };
+    let config = RedactionConfig { rules: vec![rule], engines: Default::default() }; // Added engines
     let engine = RegexEngine::new(config)?;
 
     let text_invalid_group_00 = "Group 00: 123-00-4567.";
@@ -372,7 +367,7 @@ fn test_us_ssn_programmatic_validation_invalid_serial_0000() -> Result<()> {
         false, None, false, false,
         true,
     );
-    let config = RedactionConfig { rules: vec![rule] };
+    let config = RedactionConfig { rules: vec![rule], engines: Default::default() }; // Added engines
     let engine = RegexEngine::new(config)?;
 
     let text_invalid_serial_0000 = "Serial 0000: 123-45-0000.";
@@ -394,7 +389,7 @@ fn test_uk_nino_programmatic_validation_valid() -> Result<()> {
         false, None, false, false,
         true,
     );
-    let config = RedactionConfig { rules: vec![rule] };
+    let config = RedactionConfig { rules: vec![rule], engines: Default::default() }; // Added engines
     let engine = RegexEngine::new(config)?;
 
     let input = "Valid NINO: AB123456A. Valid Spaced NINO: AA 12 34 56 B.";
@@ -416,7 +411,7 @@ fn test_uk_nino_programmatic_validation_invalid_prefix() -> Result<()> {
         false, None, false, false,
         true,
     );
-    let config = RedactionConfig { rules: vec![rule] };
+    let config = RedactionConfig { rules: vec![rule], engines: Default::default() }; // Added engines
     let engine = RegexEngine::new(config)?;
 
     let input = "Invalid BG: BG123456A. Invalid GB: GB123456B. Invalid ZZ: ZZ123456C. Invalid DF: DF123456A. Invalid QV: QV123456B.";
@@ -435,7 +430,7 @@ fn test_compile_rules_invalid_regex_fails_fast() {
         create_test_rule("valid_rule", "abc", "[REDACTED]", false, None, false, false, false),
         create_test_rule("invalid_rule", "[", "[ERROR]", false, None, false, false, false),
     ];
-    let config = RedactionConfig { rules: rules_vec };
+    let config = RedactionConfig { rules: rules_vec, engines: Default::default() }; // Added engines
     let result = RegexEngine::new(config);
     assert!(result.is_err());
     let err = result.unwrap_err();
@@ -451,7 +446,7 @@ fn test_compile_rules_pattern_too_long_fails_fast() {
         create_test_rule("valid_rule", "abc", "[REDACTED]", false, None, false, false, false),
         create_test_rule("long_pattern_rule", &long_pattern, "[TOO_LONG]", false, None, false, false, false),
     ];
-    let config = RedactionConfig { rules: rules_vec };
+    let config = RedactionConfig { rules: rules_vec, engines: Default::default() }; // Added engines
     let result = RegexEngine::new(config);
     assert!(result.is_err());
     let err = result.unwrap_err();

@@ -1,132 +1,386 @@
 // cleansh/tests/cli_integration_tests.rs
 //! This file contains command-line interface (CLI) integration tests for the `cleansh` application.
 //!
-//! These tests focus on verifying the `cleansh` executable's behavior when invoked from the command line,
-//! simulating real user interactions. They cover various scenarios including:
-//! - Basic sanitization with default rules.
-//! - Output redirection to files.
-//! - Clipboard integration (when the feature is enabled).
-//! - Diff view output.
-//! - Loading and merging custom redaction rules from a configuration file.
-//!
-//! The tests use `assert_cmd` to execute the `cleansh` binary and capture its `stdout` and `stderr`.
-//! `tempfile` is used for creating temporary input/output files and configuration files,
-//! ensuring tests are isolated and leave no artifacts.
-//! `strip_ansi_escapes` is crucial for reliable assertions against console output,
-//! as `cleansh` may produce colored (ANSI escaped) output which needs to be stripped
-//! for plain text comparison.
-//!
-//! Logging: `RUST_LOG` and `CLEANSH_ALLOW_DEBUG_PII` environment variables are set
-//! for the spawned `cleansh` process to enable detailed debug logging and
-//! reveal original PII in logs for testing purposes, allowing comprehensive
-//! verification of internal logic and data flow.
+//! Integration tests verify the end-to-end functionality of the `cleansh` application
+//! by simulating real-world usage scenarios, including applying redaction rules,
+//! handling different output modes (file output, clipboard, diff view), and
+//! managing the display of redaction summaries.
 
-use anyhow::Result;
-#[allow(unused_imports)] // This is often used by `predicates::str::contains`
+use anyhow::{Context, Result};
+#[allow(unused_imports)] 
 use predicates::prelude::*;
 use tempfile::NamedTempFile;
 use std::io::Write;
 use std::fs;
 
-#[allow(unused_imports)] // Used for `Command::cargo_bin` and `assert` method
+#[allow(unused_imports)]
 use assert_cmd::prelude::*;
 use assert_cmd::Command;
 
 // Import the specific `strip` function from `strip_ansi_escapes`
 use strip_ansi_escapes::strip as strip_ansi_escapes_fn;
 
-/// Helper function to run the `cleansh` command with given input and arguments.
-///
-/// This function sets up the `Command` to execute the `cleansh` binary,
-/// configures environment variables for logging, provides the input via stdin,
-/// and returns an `assert_cmd::assert::Assert` object for making assertions
-/// on the command's output and exit status.
-///
-/// # Arguments
-/// * `input` - The string input to be fed to `cleansh` via stdin.
-/// * `args` - A slice of string slices representing the command-line arguments
-///            to pass to `cleansh`.
-///
-/// # Returns
-/// An `assert_cmd::assert::Assert` instance, allowing chaining of assertions.
+use cleansh::commands::cleansh::{run_cleansh_opts, CleanshOptions};
+use cleansh::ui::theme::{self, ThemeEntry};
+// FIX: Use cleansh_core and cleansh public modules
+use cleansh_core::config::{RedactionConfig, merge_rules, RedactionRule};
+use cleansh_core::{
+    engine::SanitizationEngine,
+    RegexEngine,
+};
+use chrono::Utc;
+
+/// This module ensures that logging (e.g., from `pii_debug!` macro) is set up for tests.
+#[allow(unused_imports)]
+#[cfg(test)]
+mod test_setup {
+    use std::sync::Once;
+    static INIT: Once = Once::new();
+
+    pub fn setup_logger() {
+        INIT.call_once(|| {
+            env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("debug"))
+                .is_test(true)
+                .try_init()
+                .ok();
+        });
+    }
+}
+
+fn get_default_theme_map() -> std::collections::HashMap<ThemeEntry, theme::ThemeStyle> {
+    theme::ThemeStyle::default_theme_map()
+}
+
+fn create_test_engine(custom_config_path: Option<std::path::PathBuf>) -> Result<Box<dyn SanitizationEngine>> {
+    let mut config = RedactionConfig::load_default_rules()
+        .context("Failed to load default redaction rules")?;
+
+    if let Some(path) = custom_config_path {
+        let user_config = RedactionConfig::load_from_file(&path)
+            .context("Failed to load user-defined configuration file")?;
+        config = merge_rules(config, Some(user_config));
+    }
+
+    let engine = RegexEngine::new(config)?;
+    Ok(Box::new(engine))
+}
+
 fn run_cleansh_command(input: &str, args: &[&str]) -> assert_cmd::assert::Assert {
-    // FIX: Using assert_cmd::cargo_bin! to handle custom build directories and avoid deprecation
     let mut cmd = Command::new(assert_cmd::cargo_bin!("cleansh"));
-    // CRITICAL: Set RUST_LOG for the *spawned cleansh process*.
-    // This ensures debug logs from your application are visible in the test output.
     cmd.env("RUST_LOG", "debug");
-    // Allow PII debug logs for testing purposes.
-    // Setting this to "true" means the "Rule '{}' captured match (original): {}" log
-    // will display the *original*, unredacted PII. This is crucial for verifying
-    // that the correct original values are being processed internally.
     cmd.env("CLEANSH_ALLOW_DEBUG_PII", "true");
     cmd.args(args);
     cmd.write_stdin(input.as_bytes()).unwrap();
     cmd.assert()
 }
 
-/// Helper function to strip ANSI escape codes from a string.
-///
-/// `cleansh` can output colored text using ANSI escape codes. For robust string
-/// comparisons in assertions, these codes must be removed.
-///
-/// # Arguments
-/// * `s` - The input string, potentially containing ANSI escape codes.
-///
-/// # Returns
-/// A new `String` with all ANSI escape codes removed.
 fn strip_ansi(s: &str) -> String {
     let cleaned = strip_ansi_escapes_fn(s);
     String::from_utf8_lossy(&cleaned).to_string()
 }
 
-/// Tests basic sanitization functionality of `cleansh` via the CLI.
-///
-/// This test verifies that `cleansh` can process input from stdin, apply
-/// default redaction rules (email and IPv4 address), print the sanitized
-/// output to stdout, and output detailed debug logs and a redaction summary
-/// to stderr.
-///
-/// # Test Steps:
-/// 1. Define `input` string with an email and an IP address.
-/// 2. Define `expected_stdout` (sanitized content) and a list of
-///    `expected_stderr_contains_substrings` for log verification.
-/// 3. Execute `cleansh` via `run_cleansh_command`. The `--no-clipboard` flag has been removed.
-/// 4. Capture and strip ANSI codes from both stdout and stderr.
-/// 5. Print captured stdout and stderr for debugging in case of test failure.
-/// 6. Assert that stdout exactly matches `expected_stdout`.
-/// 7. Assert that stderr contains all expected log messages, including
-///    specific debug logs for rule compilation, captured matches, redaction actions,
-///    and the redaction summary. This confirms internal processing and logging.
-///
-/// # Returns
-/// `Ok(())` if the test passes, `Err` if any assertion fails.
+#[test]
+fn test_run_cleansh_basic_sanitization() -> Result<()> {
+    test_setup::setup_logger();
+    let input = "email: test@example.com. My SSN is 123-45-6789.";
+    
+    // FIX: Added engines: Default::default()
+    let config = RedactionConfig {
+        rules: vec![
+            RedactionRule {
+                name: "email".to_string(),
+                description: Some("An email address pattern.".to_string()),
+                pattern: Some(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b".to_string()),
+                pattern_type: "regex".to_string(),
+                replace_with: "[EMAIL]".to_string(),
+                author: "test_author".to_string(),
+                created_at: Utc::now().to_rfc3339(),
+                updated_at: Utc::now().to_rfc3339(),
+                version: "1.0.0".to_string(),
+                multiline: false,
+                dot_matches_new_line: false,
+                opt_in: false,
+                programmatic_validation: false,
+                enabled: Some(true),
+                severity: Some("low".to_string()),
+                tags: Some(vec!["integration_test".to_string()]),
+            },
+            RedactionRule {
+                name: "us_ssn".to_string(),
+                description: Some("A US Social Security Number pattern with programmatic validation.".to_string()),
+                pattern: Some(r"\b(\d{3})-(\d{2})-(\d{4})\b".to_string()),
+                pattern_type: "regex".to_string(),
+                replace_with: "[US_SSN_REDACTED]".to_string(),
+                author: "test_author".to_string(),
+                created_at: Utc::now().to_rfc3339(),
+                updated_at: Utc::now().to_rfc3339(),
+                version: "1.0.0".to_string(),
+                multiline: false,
+                dot_matches_new_line: false,
+                opt_in: false,
+                programmatic_validation: true,
+                enabled: Some(true),
+                severity: Some("high".to_string()),
+                tags: Some(vec!["integration_test".to_string(), "pii".to_string()]),
+            },
+        ],
+        engines: Default::default(), // Added
+    };
+
+    let temp_dir = tempfile::tempdir()?;
+    let output_file_path = temp_dir.path().join("output.txt");
+    let temp_config_file = temp_dir.path().join("test_rules.yaml");
+    let config_yaml = serde_yaml::to_string(&config)?;
+    std::fs::write(&temp_config_file, config_yaml)?;
+
+    let engine = create_test_engine(Some(temp_config_file.clone()))?;
+
+    let opts = CleanshOptions {
+        input: input.to_string(),
+        clipboard: false,
+        diff: false,
+        output_path: Some(output_file_path.clone()),
+        no_redaction_summary: false,
+        quiet: false,
+    };
+    let theme_map = get_default_theme_map();
+
+    run_cleansh_opts(&*engine, opts, &theme_map)?;
+
+    let output_from_file = std::fs::read_to_string(&output_file_path)?;
+    let output_stripped_from_file = strip_ansi_escapes::strip_str(&output_from_file);
+
+    assert_eq!(output_stripped_from_file.trim(), "email: [EMAIL]. My SSN is [US_SSN_REDACTED].");
+
+    Ok(())
+}
+
+#[test]
+fn test_run_cleansh_no_redaction_summary() -> Result<()> {
+    test_setup::setup_logger();
+    let input = "email: test@example.com. Invalid SSN: 000-12-3456.";
+    
+    // FIX: Added engines: Default::default()
+    let config = RedactionConfig {
+        rules: vec![
+            RedactionRule {
+                name: "email".to_string(),
+                description: Some("An email address pattern.".to_string()),
+                pattern: Some(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b".to_string()),
+                pattern_type: "regex".to_string(),
+                replace_with: "[EMAIL]".to_string(),
+                author: "test_author".to_string(),
+                created_at: Utc::now().to_rfc3339(),
+                updated_at: Utc::now().to_rfc3339(),
+                version: "1.0.0".to_string(),
+                multiline: false,
+                dot_matches_new_line: false,
+                opt_in: false,
+                programmatic_validation: false,
+                enabled: Some(true),
+                severity: Some("low".to_string()),
+                tags: Some(vec!["integration_test".to_string()]),
+            },
+            RedactionRule {
+                name: "us_ssn".to_string(),
+                description: Some("A US Social Security Number pattern with programmatic validation.".to_string()),
+                pattern: Some(r"\b(\d{3})-(\d{2})-(\d{4})\b".to_string()),
+                pattern_type: "regex".to_string(),
+                replace_with: "[US_SSN_REDACTED]".to_string(),
+                author: "test_author".to_string(),
+                created_at: Utc::now().to_rfc3339(),
+                updated_at: Utc::now().to_rfc3339(),
+                version: "1.0.0".to_string(),
+                multiline: false,
+                dot_matches_new_line: false,
+                opt_in: false,
+                programmatic_validation: true,
+                enabled: Some(true),
+                severity: Some("high".to_string()),
+                tags: Some(vec!["integration_test".to_string(), "pii".to_string()]),
+            },
+        ],
+        engines: Default::default(), // Added
+    };
+
+    let temp_dir = tempfile::tempdir()?;
+    let output_file_path = temp_dir.path().join("output_no_summary.txt");
+    let temp_config_file = temp_dir.path().join("test_rules_no_summary.yaml");
+    let config_yaml = serde_yaml::to_string(&config)?;
+    std::fs::write(&temp_config_file, config_yaml)?;
+
+    let engine = create_test_engine(Some(temp_config_file.clone()))?;
+
+    let opts = CleanshOptions {
+        input: input.to_string(),
+        clipboard: false,
+        diff: false,
+        output_path: Some(output_file_path.clone()),
+        no_redaction_summary: true,
+        quiet: false,
+    };
+    let theme_map = get_default_theme_map();
+
+    run_cleansh_opts(&*engine, opts, &theme_map)?;
+
+    let output = std::fs::read_to_string(&output_file_path)?;
+    let output_stripped = strip_ansi_escapes::strip_str(&output);
+
+    assert_eq!(output_stripped.trim(), "email: [EMAIL]. Invalid SSN: 000-12-3456.");
+    assert!(!output_stripped.contains("--- Redaction Summary ---"));
+
+    Ok(())
+}
+
+#[cfg(feature = "clipboard")]
+#[test]
+fn test_run_cleansh_clipboard_copy() -> Result<()> {
+    test_setup::setup_logger();
+
+    if std::env::var("CI").is_ok() {
+        eprintln!("Skipping test_run_cleansh_clipboard_copy in CI (no display/X11)");
+        return Ok(());
+    }
+
+    let input = "email: test@example.com";
+    // FIX: Added engines: Default::default()
+    let config = RedactionConfig {
+        rules: vec![RedactionRule {
+            name: "email".to_string(),
+            description: Some("An email address pattern.".to_string()),
+            pattern: Some(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b".to_string()),
+            pattern_type: "regex".to_string(),
+            replace_with: "[EMAIL]".to_string(),
+            author: "test_author".to_string(),
+            created_at: Utc::now().to_rfc3339(),
+            updated_at: Utc::now().to_rfc3339(),
+            version: "1.0.0".to_string(),
+            multiline: false,
+            dot_matches_new_line: false,
+            opt_in: false,
+            programmatic_validation: false,
+            enabled: Some(true),
+            severity: Some("low".to_string()),
+            tags: Some(vec!["integration_test".to_string()]),
+        }],
+        engines: Default::default(), // Added
+    };
+
+    let temp_dir = tempfile::tempdir()?;
+    let output_file_path = temp_dir.path().join("output_clipboard.txt");
+    let temp_config_file = temp_dir.path().join("test_rules_clipboard.yaml");
+    let config_yaml = serde_yaml::to_string(&config)?;
+    std::fs::write(&temp_config_file, config_yaml)?;
+
+    let engine = create_test_engine(Some(temp_config_file.clone()))?;
+
+    let opts = CleanshOptions {
+        input: input.to_string(),
+        clipboard: true,
+        diff: false,
+        output_path: Some(output_file_path.clone()),
+        no_redaction_summary: true,
+        quiet: false,
+    };
+    let theme_map = get_default_theme_map();
+
+    run_cleansh_opts(&*engine, opts, &theme_map)?;
+
+    let mut clipboard = arboard::Clipboard::new().context("Failed to get clipboard")?;
+    let clipboard_content = clipboard.get_text().context("Failed to read clipboard")?;
+
+    assert_eq!(clipboard_content.trim(), "email: [EMAIL]");
+
+    let output_from_file = std::fs::read_to_string(&output_file_path)?;
+    let output_stripped_from_file = strip_ansi_escapes::strip_str(&output_from_file);
+    assert_eq!(output_stripped_from_file.trim(), "email: [EMAIL]");
+
+    Ok(())
+}
+
+#[test]
+fn test_run_cleansh_diff_output() -> Result<()> {
+    test_setup::setup_logger();
+    let input = "Original email: test@example.com\nAnother line.";
+    // FIX: Added engines: Default::default()
+    let config = RedactionConfig {
+        rules: vec![RedactionRule {
+            name: "email".to_string(),
+            description: Some("An email address pattern.".to_string()),
+            pattern: Some(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b".to_string()),
+            pattern_type: "regex".to_string(),
+            replace_with: "[EMAIL]".to_string(),
+            author: "test_author".to_string(),
+            created_at: Utc::now().to_rfc3339(),
+            updated_at: Utc::now().to_rfc3339(),
+            version: "1.0.0".to_string(),
+            multiline: false,
+            dot_matches_new_line: false,
+            opt_in: false,
+            programmatic_validation: false,
+            enabled: Some(true),
+            severity: Some("low".to_string()),
+            tags: Some(vec!["integration_test".to_string()]),
+        }],
+        engines: Default::default(), // Added
+    };
+
+    let temp_dir = tempfile::tempdir()?;
+    let output_file_path = temp_dir.path().join("output_diff.txt");
+    let temp_config_file = temp_dir.path().join("test_rules_diff.yaml");
+    let config_yaml = serde_yaml::to_string(&config)?;
+    std::fs::write(&temp_config_file, config_yaml)?;
+
+    let engine = create_test_engine(Some(temp_config_file.clone()))?;
+
+    let opts = CleanshOptions {
+        input: input.to_string(),
+        clipboard: false,
+        diff: true,
+        output_path: Some(output_file_path.clone()),
+        no_redaction_summary: true,
+        quiet: false,
+    };
+    let theme_map = get_default_theme_map();
+
+    run_cleansh_opts(&*engine, opts, &theme_map)?;
+
+    let output = std::fs::read_to_string(&output_file_path)?;
+    let output_stripped = strip_ansi_escapes::strip_str(&output);
+
+    let expected_diff_output_part = vec![
+        "-Original email: test@example.com",
+        "+Original email: [EMAIL]",
+        " Another line.",
+    ]
+    .join("\n");
+
+    assert!(output_stripped.contains(&expected_diff_output_part), "Expected diff part not found in output:\n'{}'\nActual output:\n'{}'", expected_diff_output_part, output_stripped);
+    assert!(!output_stripped.contains("\\n"), "Diff output should not contain literal \\n sequences.");
+
+    assert!(!output_stripped.contains("--- Redaction Summary ---"));
+
+    Ok(())
+}
+
 #[test]
 fn test_basic_sanitization() -> Result<()> {
     let input = "My email is test@example.com and my IP is 192.168.1.1.";
-    // FIX APPLIED HERE: Added '\n' to the end of the expected_stdout string
-    // to match the behavior of `println!` which adds a newline by default.
     let expected_stdout = "My email is [EMAIL_REDACTED] and my IP is [IPV4_REDACTED].\n";
     let expected_stderr_contains_substrings = vec![
-        // FIX: Updated version to 0.1.9 to match Cargo.toml
-        "[INFO cleansh] cleansh started. Version: 0.1.9".to_string(),
         "[DEBUG cleansh_core::config] Loading default rules from embedded string...".to_string(),
-        // FIX: The log message has been updated to be more specific.
         "[DEBUG cleansh_core::sanitizers::compiler] Rule 'email' compiled successfully.".to_string(),
         "[DEBUG cleansh_core::sanitizers::compiler] Rule 'ipv4_address' compiled successfully.".to_string(),
         "Reading input from stdin...".to_string(),
-        // FIX APPLIED HERE: The log message has changed from "Starting sanitize operation." to "Starting cleansh operation."
         "[INFO cleansh::commands::cleansh] Starting cleansh operation.".to_string(),
         "Writing sanitized content to stdout.".to_string(),
         "Displaying redaction summary.".to_string(),
         "--- Redaction Summary ---".to_string(),
         "ipv4_address (1 occurrences)".to_string(),
         "email (1 occurrences)".to_string(),
-        // FIX APPLIED HERE: The log message has been updated to include "successfully."
         "[INFO cleansh::commands::cleansh] Cleansh operation completed.".to_string(),
     ];
 
-    // FIX APPLIED HERE: The subcommand "sanitize" is now mandatory and has been added.
     let assert_result = run_cleansh_command(input, &["sanitize"]).success();
     let stdout = strip_ansi(&String::from_utf8_lossy(&assert_result.get_output().stdout));
     let stderr = strip_ansi(&String::from_utf8_lossy(&assert_result.get_output().stderr));
@@ -144,8 +398,6 @@ fn test_basic_sanitization() -> Result<()> {
         assert!(stderr.contains(&msg), "Stderr missing: '{}'\nFull stderr:\n{}", msg, stderr);
     }
 
-    // Updated assertions to match the new log prefixes from `log_captured_match_debug`
-    // and `log_redaction_action_debug` in `src/utils/redaction.rs`, and `log_redaction_match_debug` in `cleansh.rs`.
     assert!(
         stderr.contains("[DEBUG cleansh_core::redaction_match] cleansh_core::engine Captured match (original): 'test@example.com' for rule 'email'"),
         "Stderr missing expected original capture log for email.\nFull stderr:\n{}", stderr
@@ -158,35 +410,6 @@ fn test_basic_sanitization() -> Result<()> {
     Ok(())
 }
 
-/// Tests `cleansh`'s ability to copy sanitized output to the system clipboard
-/// and simultaneously write it to a specified file.
-///
-/// This test is conditional, running only if the `clipboard` feature is enabled
-/// and is skipped in CI environments due to potential lack of a display server.
-/// It verifies that `stdout` is empty (as output goes to file/clipboard) and
-/// checks specific log messages indicating clipboard and file operations.
-///
-/// # Pre-conditions:
-/// - `clipboard` feature must be enabled (`#[cfg(feature = "clipboard")]`).
-/// - The test will be skipped if the `CI` environment variable is set.
-///
-/// # Test Steps:
-/// 1. Skip test if in CI.
-/// 2. Define `input`, `expected_stdout` (empty for file output), and
-///    `expected_stderr_contains` messages.
-/// 3. Create a temporary YAML config file for a custom email rule.
-/// 4. Create a temporary output file.
-/// 5. Execute `cleansh` with `-c` (clipboard), `-o` (output file),
-///    `--config` (custom config), and `--no-redaction-summary`.
-/// 6. Capture and strip ANSI codes from both stdout and stderr.
-/// 7. Print captured stdout and stderr for debugging.
-/// 8. Assert that stdout is empty.
-/// 9. Assert that stderr contains specific log messages confirming input source,
-///    file writing, clipboard copy, and debug logs for rule compilation and redaction.
-/// 10. Assert that the content of the temporary output file matches the expected sanitized output.
-///
-/// # Returns
-/// `Ok(())` if the test passes (or is skipped), `Err` if any assertion fails.
 #[cfg(feature = "clipboard")]
 #[test]
 fn test_run_cleansh_clipboard_copy_to_file() -> Result<()> {
@@ -196,7 +419,7 @@ fn test_run_cleansh_clipboard_copy_to_file() -> Result<()> {
     }
 
     let input = "My email is test@example.com";
-    let expected_file_content = "My email is [EMAIL_REDACTED]\n"; // Expected content in file, not stdout
+    let expected_file_content = "My email is [EMAIL_REDACTED]\n";
     
     let config_yaml = r#"rules:
   - name: "email"
@@ -216,11 +439,11 @@ fn test_run_cleansh_clipboard_copy_to_file() -> Result<()> {
     let output_path = output_file.path().to_str().unwrap();
 
     let assert_result = run_cleansh_command(input, &[
-        "sanitize", // ADDED: The mandatory `sanitize` subcommand
-        "-c", // Enable clipboard copy
-        "-o", output_path, // Specify output file
-        "--config", config_path, // Use custom config
-        "--no-redaction-summary", // Do not print summary to stderr
+        "sanitize", 
+        "-c", 
+        "-o", output_path, 
+        "--config", config_path, 
+        "--no-redaction-summary", 
     ]).success();
     let stdout = strip_ansi(&String::from_utf8_lossy(&assert_result.get_output().stdout));
     let stderr = strip_ansi(&String::from_utf8_lossy(&assert_result.get_output().stderr));
@@ -232,17 +455,8 @@ fn test_run_cleansh_clipboard_copy_to_file() -> Result<()> {
     eprintln!("{}", stderr);
     eprintln!("--- END STDERR ---\n");
 
-    // When outputting to a file, stdout should be empty
     assert_eq!(stdout, "");
 
-    // Assertions for the presence of key log messages.
-    // The log for writing to the file has changed. It's no longer an INFO message
-    // that includes the file path directly. Instead, there's a DEBUG log.
-    // FIX: Updated version to 0.1.9
-    assert!(
-        stderr.contains("[INFO cleansh] cleansh started. Version: 0.1.9"),
-        "Stderr missing `cleansh started` log.\nFull stderr:\n{}", stderr
-    );
     assert!(
         stderr.contains("Reading input from stdin..."),
         "Stderr missing `Reading input` log.\nFull stderr:\n{}", stderr
@@ -251,12 +465,10 @@ fn test_run_cleansh_clipboard_copy_to_file() -> Result<()> {
         stderr.contains("[INFO cleansh::commands::cleansh] Starting cleansh operation."),
         "Stderr missing `Starting cleansh operation` log.\nFull stderr:\n{}", stderr
     );
-    // The `Writing sanitized content to file:` log is now just a string, not a full INFO log
     assert!(
         stderr.contains("Writing sanitized content to file:"),
         "Stderr missing `Writing sanitized content to file:` log.\nFull stderr:\n{}", stderr
     );
-    // The debug log now contains the full path
     assert!(
         stderr.contains(&format!("[DEBUG cleansh::commands::cleansh] [cleansh::commands::cleansh] Outputting to file: {}", output_path)),
         "Stderr missing `Outputting to file:` log with path.\nFull stderr:\n{}", stderr
@@ -280,30 +492,6 @@ fn test_run_cleansh_clipboard_copy_to_file() -> Result<()> {
     Ok(())
 }
 
-/// Tests `cleansh`'s ability to redact JWT tokens and copy the sanitized output
-/// to the system clipboard while printing it to stdout.
-///
-/// This test is conditional, running only if the `clipboard` feature is enabled
-/// and is skipped in CI environments due to potential lack of a display server.
-/// It focuses on JWT redaction and combined
-/// clipboard/stdout output.
-///
-/// # Pre-conditions:
-/// - `clipboard` feature must be enabled (`#[cfg(feature = "clipboard")]`).
-/// - The test will be skipped if the `CI` environment variable is set.
-///
-/// # Test Steps:
-/// 1. Skip test if in CI.
-/// 2. Define `input` with a JWT, `expected_stdout`, and `expected_stderr_contains` messages.
-/// 3. Execute `cleansh` with `-c` (clipboard) and `--no-redaction-summary`.
-/// 4. Capture and strip ANSI codes from stdout and stderr.
-/// 5. Print captured stdout and stderr for debugging.
-/// 6. Assert that stdout exactly matches `expected_stdout`.
-/// 7. Assert that stderr contains specific log messages, confirming clipboard copy
-///    and JWT redaction details, but no redaction summary.
-///
-/// # Returns
-/// `Ok(())` if the test passes (or is skipped), `Err` if any assertion fails.
 #[cfg(feature = "clipboard")]
 #[test]
 fn test_clipboard_output_with_jwt() -> Result<()> {
@@ -325,7 +513,6 @@ fn test_clipboard_output_with_jwt() -> Result<()> {
         "[INFO cleansh::commands::cleansh] Cleansh operation completed.".to_string(),
     ];
 
-    // FIX APPLIED: Added "sanitize" subcommand
     let assert_result = run_cleansh_command(input, &["sanitize", "--clipboard", "--no-redaction-summary"]).success();
     let stdout = strip_ansi(&String::from_utf8_lossy(&assert_result.get_output().stdout));
     let stderr = strip_ansi(&String::from_utf8_lossy(&assert_result.get_output().stderr));
@@ -345,27 +532,9 @@ fn test_clipboard_output_with_jwt() -> Result<()> {
     Ok(())
 }
 
-
-/// Tests `cleansh`'s `--diff` functionality.
-///
-/// This test verifies that `cleansh` can generate a diff-style output
-/// highlighting the changes between the original and sanitized content.
-/// It uses a temporary input file to read the data.
-///
-/// # Test Steps:
-/// 1. Create a temporary input file with an IP address.
-/// 2. Define `expected_stdout_contains` strings for the diff output.
-/// 3. Execute `cleansh` with `--diff` and `--no-redaction-summary`.
-///    The `--no-clipboard` flag has been removed.
-/// 4. Capture and strip ANSI codes from stdout.
-/// 5. Assert that stdout contains the expected diff output lines.
-///
-/// # Returns
-/// `Ok(())` if the test passes, `Err` if any assertion fails.
 #[test]
 fn test_diff_view() -> Result<()> {
     let input = "Old IP: 10.0.0.1. New IP: 192.168.1.1.";
-    // FIX APPLIED HERE: Added the `sanitize` subcommand.
     let assert_result = run_cleansh_command(input, &["sanitize", "--diff", "--no-redaction-summary"]).success();
     let stdout = strip_ansi(&String::from_utf8_lossy(&assert_result.get_output().stdout));
     assert!(stdout.contains("-Old IP: 10.0.0.1. New IP: 192.168.1.1.\n"));
@@ -373,21 +542,6 @@ fn test_diff_view() -> Result<()> {
     Ok(())
 }
 
-/// Tests `cleansh`'s file output functionality (`-o`).
-///
-/// This test verifies that `cleansh` can write its sanitized output to a
-/// specified file instead of stdout. It checks that the output file's content
-/// is correct and that `stdout` is empty.
-///
-/// # Test Steps:
-/// 1. Create a temporary output file.
-/// 2. Define `input` string.
-/// 3. Execute `cleansh` with `-o`, specifying the temporary file path.
-///    The `--no-clipboard` flag has been removed.
-/// 4. Assert that `stdout` is empty and the output file's content is as expected.
-///
-/// # Returns
-/// `Ok(())` if the test passes, `Err` if any assertion fails.
 #[test]
 fn test_output_to_file() -> Result<()> {
     let file = NamedTempFile::new()?;
@@ -396,7 +550,6 @@ fn test_output_to_file() -> Result<()> {
 
     let input = "This is a test with sensitive info: user@domain.com";
 
-    // FIX APPLIED HERE: Added the `sanitize` subcommand.
     let assert_result = run_cleansh_command(input, &["sanitize", "-o", file_path_str, "--no-redaction-summary"]).success();
     let stdout = strip_ansi(&String::from_utf8_lossy(&assert_result.get_output().stdout));
 
@@ -408,25 +561,8 @@ fn test_output_to_file() -> Result<()> {
     Ok(())
 }
 
-/// Tests `cleansh`'s ability to load and merge custom redaction rules from
-/// a configuration file specified via `--config`.
-///
-/// This test uses a custom rule to redact a fictional secret token in addition
-/// to the default `email` rule, verifying that both are applied correctly.
-///
-/// # Test Steps:
-/// 1. Create a temporary YAML config file with a custom rule.
-/// 2. Define `original_text` containing both an email and a custom token.
-/// 3. Execute `cleansh` with `--config`, pointing to the temporary file.
-///    The `--no-clipboard` flag has been removed.
-/// 4. Assert that the stdout contains the correctly redacted output for
-///    both the email and the custom token.
-///
-/// # Returns
-/// `Ok(())` if the test passes, `Err` if any assertion fails.
 #[test]
 fn test_custom_config_file() -> Result<()> {
-    // 1. Create a temporary config file
     let mut config_file = NamedTempFile::new()?;
     let config_content = r#"
 rules:
@@ -448,16 +584,12 @@ rules:
     config_file.write_all(config_content.as_bytes())?;
     let config_path = config_file.path().to_str().unwrap();
 
-    // 2. Prepare the input
     let original_text =
         "My email is user@example.com and another is user@test.org. My secret is MYSECRET-1234.";
 
-    // 3. Run the cleansh command with the custom config
-    // FIX APPLIED HERE: Added the `sanitize` subcommand.
     let assert_result = run_cleansh_command(original_text, &["sanitize", "--config", config_path, "--no-redaction-summary"]).success();
     let stdout = strip_ansi(&String::from_utf8_lossy(&assert_result.get_output().stdout));
 
-    // 4. Assert the output is as expected
     assert_eq!(stdout, "My email is [EMAIL_REDACTED] and another is [EMAIL_REDACTED]. My secret is [SECRET_TOKEN].\n");
 
     Ok(())

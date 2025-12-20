@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.1.11] - 2025-12-20 — Dynamic Entropy Configuration
+
+### Added
+* **Configurable Entropy Threshold:** `CleanSH` now supports dynamic configuration of the entropy engine's sensitivity. While there is no direct CLI flag yet, you can now set `engines.entropy.threshold` in your `cleansh.toml` or custom config file (default: 0.5).
+* **CLI Dependency Update:** Updated `cleansh-core` to `v0.1.5` to enable the fix for the "impossible threshold" bug in the entropy engine.
+
+---
+
 ## [0.1.9] - 2025-12-19 — Open Source Transition & Entropy Engine
 
 This release marks a pivotal shift in the project's history. **`CleanSH` is now fully Open Source under the MIT/Apache-2.0 licenses**, removing all previous usage restrictions. We have also introduced the powerful new **Dynamic Contextual Entropy Engine** for detecting unstructured secrets.
