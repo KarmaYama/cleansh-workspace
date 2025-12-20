@@ -1,14 +1,14 @@
 // cleansh-entropy/src/context/mod.rs
 use daachorse::DoubleArrayAhoCorasick;
+extern crate alloc;
 use alloc::vec;
 use core::fmt;
 
-/// Scans for keywords surrounding a potential secret.
+/// Scans for keywords surrounding a potential secret with word-boundary awareness.
 pub struct ContextScanner {
     automaton: DoubleArrayAhoCorasick<usize>,
 }
 
-// Manual implementation of Debug because DoubleArrayAhoCorasick doesn't support it.
 impl fmt::Debug for ContextScanner {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ContextScanner")
@@ -32,12 +32,26 @@ impl ContextScanner {
         Self { automaton }
     }
 
+    /// Scans the preceding context for keywords.
+    /// Employs word-boundary checks to ensure "key" doesn't match "monkey".
     pub fn scan_preceding_context(&self, text: &[u8], token_start: usize, window_size: usize) -> bool {
         if token_start == 0 { return false; }
         
         let start = token_start.saturating_sub(window_size);
         let window = &text[start..token_start];
         
-        self.automaton.find_iter(window).next().is_some()
+        for matched in self.automaton.find_iter(window) {
+            let m_start = matched.start();
+            let m_end = matched.end();
+
+            // Word boundary check: ensure keyword is not surrounded by alphanumeric chars
+            let prefix_ok = m_start == 0 || !window[m_start - 1].is_ascii_alphanumeric();
+            let suffix_ok = m_end == window.len() || !window[m_end].is_ascii_alphanumeric();
+
+            if prefix_ok && suffix_ok {
+                return true;
+            }
+        }
+        false
     }
 }
