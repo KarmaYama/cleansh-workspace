@@ -1,10 +1,16 @@
 <?xml version='1.0' encoding='windows-1252'?>
+<?if $(sys.BUILDARCH) = x64 or $(sys.BUILDARCH) = arm64 ?>
+    <?define PlatformProgramFilesFolder = "ProgramFiles64Folder" ?>
+<?else ?>
+    <?define PlatformProgramFilesFolder = "ProgramFilesFolder" ?>
+<?endif ?>
+
 <Wix xmlns='http://schemas.microsoft.com/wix/2006/wi'>
 
     <Product
         Id='*'
         Name='cleansh'
-        UpgradeCode='DB8DAC94-9423-4D0E-A466-24166013B8BB'
+        UpgradeCode='F47C98E6-B908-4CB3-A38B-0EFD5F3DE62D'
         Manufacturer='Relay'
         Language='1033'
         Codepage='1252'
@@ -12,7 +18,7 @@
 
         <Package Id='*'
             Keywords='Installer'
-            Description='The Cleansh Installer'
+            Description='Sanitize your terminal output. One tool. One purpose.'
             Manufacturer='Relay'
             InstallerVersion='450'
             Languages='1033'
@@ -26,7 +32,7 @@
             DowngradeErrorMessage='A newer version of [ProductName] is already installed. Setup will now exit.'/>
 
         <Media Id='1' Cabinet='media1.cab' EmbedCab='yes' DiskPrompt='CD-ROM #1'/>
-        <Property Id='DiskPrompt' Value='cleansh Installation [1]'/>
+        <Property Id='DiskPrompt' Value='cleansh Installation'/>
 
         <Directory Id='TARGETDIR' Name='SourceDir'>
             <Directory Id='$(var.PlatformProgramFilesFolder)' Name='PFiles'>
@@ -80,14 +86,18 @@
 
         <SetProperty Id='ARPINSTALLLOCATION' Value='[APPLICATIONFOLDER]' After='CostFinalize'/>
 
+        
         <Property Id='ARPHELPLINK' Value='https://github.com/KarmaYama/cleansh-workspace'/>
         
         <UI>
             <UIRef Id='WixUI_FeatureTree'/>
             
-            </UI>
+            <Publish Dialog='WelcomeDlg' Control='Next' Event='NewDialog' Value='CustomizeDlg' Order='99'>1</Publish>
+            <Publish Dialog='CustomizeDlg' Control='Back' Event='NewDialog' Value='WelcomeDlg' Order='99'>1</Publish>
 
-        <WixVariable Id='WixUIDialogBmp' Value='wix\Dialog.bmp'/>
+        </UI>
+
+        
         </Product>
 
 </Wix>
