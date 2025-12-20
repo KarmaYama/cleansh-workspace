@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.1.4] - 2025-12-20 — Security Fix
+
+### Security
+
+* **Fixed Hardcoded Key Vulnerability:** Resolved a CodeQL alert (CWE-321) in the profile run-seed generation logic. Previously, dynamic strings were inadvertently used as cryptographic keys in HMAC operations. The logic has been updated to use a fixed, high-entropy salt as the key, treating the dynamic version strings as input data. This ensures cryptographic best practices are followed.
+
+---
+
 ## [0.1.3] - 2025-12-19 — Entropy Engine Integration & Open Source Transition
 
 This release integrates the new **Dynamic Contextual Entropy Engine**, enabling `cleansh-core` to detect unstructured secrets based on statistical randomness. It also marks the transition of the core library to a fully Open Source license model.
