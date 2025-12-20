@@ -1,0 +1,18 @@
+# cleansh-entropy/Cargo.toml
+[package]
+name = "cleansh-entropy"
+version = "0.1.0"
+edition = "2021"
+authors = ["Relay"]
+description = "A no_std, zero-copy entropy detection engine for cleansh."
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+# Required for math functions (log2, sqrt) in no_std
+libm = "0.2"
+# Fast, compact Aho-Corasick for keyword scanning
+daachorse = "1.0" 
+
+[features]
+default = ["std"]
+std = []

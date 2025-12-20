@@ -1,7 +1,8 @@
+// cleansh/src/utils/app_state.rs
 /// Application state management for the `cleansh` CLI tool.
 ///
 /// This module handles the loading, saving, and encryption of the application's
-/// state, including usage statistics and license information.
+/// state, including usage statistics.
 // cleansh/src/utils/app_state.rs
 
 use anyhow::{Result, Context};
@@ -10,7 +11,6 @@ use aes_gcm::aead::Aead;
 use chrono::{Utc, TimeZone};
 use log::{warn, debug};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::fs::{self, OpenOptions};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -32,33 +32,11 @@ const AES_NONCE_LEN: usize = 12;
 const STATE_FILE_TMP_SUFFIX: &str = ".tmp";
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct LicenseMeta {
-    /// True if we consider the license fully exhausted (all limited features hit).
-    pub consumed: bool,
-    /// Usage counters per feature name
-    pub feature_usage: HashMap<String, u64>,
-    /// Last observed timestamp
-    pub last_seen_utc: i64,
-}
-
-impl Default for LicenseMeta {
-    fn default() -> Self {
-        LicenseMeta {
-            consumed: false,
-            feature_usage: HashMap::new(),
-            last_seen_utc: 0,
-        }
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
 pub struct AppState {
     pub usage_count: u64,
     pub stats_only_usage_count: u64,
     pub last_prompt_timestamp: Option<u64>,
     pub donation_prompts_disabled: bool,
-    /// tracked licenses keyed by short fingerprint
-    pub licenses: HashMap<String, LicenseMeta>,
 }
 
 // The Default trait for AppState must not be recursive.
@@ -69,14 +47,12 @@ impl Default for AppState {
             stats_only_usage_count: 0,
             last_prompt_timestamp: None,
             donation_prompts_disabled: false,
-            licenses: HashMap::new(),
         }
     }
 }
 
 impl AppState {
     pub fn new() -> Self {
-        // Correctly call the Default implementation.
         Self::default()
     }
 
@@ -145,37 +121,7 @@ impl AppState {
         Ok(())
     }
 
-    // license helpers
-
-    /// Returns whether a license fingerprint is marked consumed
-    pub fn is_license_consumed(&self, fingerprint: &str) -> bool {
-        self.licenses.get(fingerprint).map(|m| m.consumed).unwrap_or(false)
-    }
-
-    /// Mark license fingerprint as consumed and persist last_seen timestamp
-    /// (used when all finite features are exhausted)
-    pub fn mark_license_consumed(&mut self, fingerprint: &str) {
-        let meta = self.licenses.entry(fingerprint.to_string()).or_insert_with(Default::default);
-        meta.consumed = true;
-        meta.last_seen_utc = Utc::now().timestamp();
-    }
-
-    /// Increment per-feature usage for a license fingerprint
-    pub fn increment_license_feature_usage(&mut self, fingerprint: &str, feature: &str) {
-        let meta = self.licenses.entry(fingerprint.to_string()).or_insert_with(Default::default);
-        let counter = meta.feature_usage.entry(feature.to_string()).or_insert(0);
-        *counter += 1;
-        meta.last_seen_utc = Utc::now().timestamp();
-    }
-
-    /// Get per-feature usage count
-    pub fn get_license_feature_usage(&self, fingerprint: &str, feature: &str) -> u64 {
-        self.licenses.get(fingerprint)
-            .and_then(|m| m.feature_usage.get(feature).copied())
-            .unwrap_or(0)
-    }
-
-    // donation prompt logic (kept from original file)
+    // donation prompt logic
     pub fn increment_usage(&mut self) {
         self.usage_count += 1;
         debug!("Main usage count incremented to {}", self.usage_count);
@@ -235,8 +181,8 @@ impl AppState {
 /// Try to fetch/generate a symmetric key (32 bytes) from keyring or fallback local key file.
 /// Returns raw key bytes.
 fn get_or_create_state_key(state_path: &Path) -> Result<Vec<u8>> {
-    // try keyring first
-    match KeyringEntry::new(KEYRING_SERVICE, KEYRING_USERNAME).get_password() {
+    // try keyring first. We use .and_then to handle Entry::new returning a Result in keyring v3.
+    match KeyringEntry::new(KEYRING_SERVICE, KEYRING_USERNAME).and_then(|entry| entry.get_password()) {
         Ok(s) => {
             let decoded = general_purpose::STANDARD.decode(s)
                 .context("Failed to decode base64 key from keyring")?;
@@ -247,7 +193,7 @@ fn get_or_create_state_key(state_path: &Path) -> Result<Vec<u8>> {
             }
         },
         Err(e) => {
-            debug!("Keyring get_password failed: {}. Will attempt local key fallback.", e);
+            debug!("Keyring access failed: {}. Will attempt local key fallback.", e);
         }
     }
 
@@ -271,11 +217,14 @@ fn get_or_create_state_key(state_path: &Path) -> Result<Vec<u8>> {
 
     // Generate new 32-byte key
     let mut key = [0u8; 32];
-    OsRng.fill_bytes(&mut key);
+    // Instantiate OsRng to satisfy trait bounds in rand 0.9.x / generic usage
+    let mut rng = OsRng;
+    rng.fill_bytes(&mut key);
 
     // Try to store in keyring (best effort)
     let b64 = general_purpose::STANDARD.encode(&key);
-    match KeyringEntry::new(KEYRING_SERVICE, KEYRING_USERNAME).set_password(&b64) {
+    // KeyringEntry::new also returns Result here, so we map it out
+    match KeyringEntry::new(KEYRING_SERVICE, KEYRING_USERNAME).and_then(|entry| entry.set_password(&b64)) {
         Ok(_) => {
             debug!("Stored state encryption key in OS keyring.");
         }
@@ -303,7 +252,9 @@ fn encrypt_state_blob(plaintext: &[u8], state_path: &Path) -> Result<Vec<u8>> {
     let cipher = Aes256Gcm::new_from_slice(&key).context("Failed to create AES-GCM cipher")?;
 
     let mut nonce_bytes = [0u8; AES_NONCE_LEN];
-    OsRng.fill_bytes(&mut nonce_bytes);
+    // Instantiate OsRng explicitly
+    let mut rng = OsRng;
+    rng.fill_bytes(&mut nonce_bytes);
     let nonce = Nonce::from_slice(&nonce_bytes);
 
     let ciphertext = cipher.encrypt(nonce, plaintext)

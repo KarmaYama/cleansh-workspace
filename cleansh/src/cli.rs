@@ -1,13 +1,6 @@
+// cleansh/src/cli.rs
 //! This file defines the command-line interface (CLI) for the cleansh application,
 //! including all available commands and their arguments.
-//! It uses the `clap` library to parse command-line arguments and subcommands.
-//! The CLI structure is designed to be extensible, allowing for future commands and options.
-//! It also includes global flags that apply across commands, such as debug logging and theme customization.
-//! The main command is `cleansh`, with subcommands like `sanitize`, `scan`, and `uninstall`.
-//! This file is the entry point for the CLI, and it integrates with the `cleansh`
-//! application logic to execute the appropriate commands based on user input.
-//!
-//! The CLI is designed to be user-friendly, with clear help messages and options for customization.
 //! License: Polyform Noncommercial License 1.0.0
 
 use clap::{Parser, Subcommand, ValueEnum};
@@ -17,11 +10,10 @@ use std::path::PathBuf;
 #[derive(Parser, Debug)]
 #[command(
     name = "cleansh",
-    author = "Obscura Team (Obscura Tech)",
+    author = "Obscura Team (Relay)",
     version = env!("CARGO_PKG_VERSION"),
     about = "Securely redact sensitive data from text",
     long_about = "Cleansh is a command-line utility for securely redacting sensitive information from text-based data. It helps you sanitize logs, code, documents, or terminal output to ensure that Personally Identifiable Information (PII) and other sensitive patterns are removed or obfuscated according to a configurable rule set.",
-    // A command is required, otherwise show help
     arg_required_else_help = true,
 )]
 pub struct Cli {
@@ -114,7 +106,7 @@ pub struct SanitizeCommand {
     pub disable: Vec<String>,
 
     /// Select which sanitization engine to use.
-    #[arg(long = "engine", value_name = "ENGINE", default_value = "regex", help = "Select a sanitization engine (e.g., 'regex').")]
+    #[arg(long = "engine", value_name = "ENGINE", default_value = "regex", help = "Select a sanitization engine (e.g., 'regex' or 'entropy').")]
     pub engine: EngineChoice,
 
     /// Process input line by line (useful for streaming data from pipes).
@@ -232,10 +224,10 @@ pub enum ProfilesCommand {
 }
 
 /// Enum for selecting the sanitization engine.
-#[derive(Debug, Clone, ValueEnum)]
+#[derive(Debug, Clone, ValueEnum, PartialEq)]
 pub enum EngineChoice {
     /// The default regular expression engine.
     Regex,
-    /// An example of another engine. This would be a future feature.
+    /// The dynamic contextual entropy engine (Pro feature).
     Entropy,
 }

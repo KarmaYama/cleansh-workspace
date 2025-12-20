@@ -17,4 +17,4 @@ Full text in `cleansh/LICENSE.md`.
 
 ---
 
-*Copyright 2025 Obscura Tech*  
+*Copyright 2025 Relay*  

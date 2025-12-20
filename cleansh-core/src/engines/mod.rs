@@ -1,3 +1,4 @@
+// cleansh-core/src/engines/mod.rs
 //! This module contains different sanitization engine implementations.
 //!
 //! Each engine is a separate file within this directory and implements the
@@ -11,3 +12,4 @@
 //! BUSL-1.1
 
 pub mod regex_engine;
+pub mod entropy_engine;

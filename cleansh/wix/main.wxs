@@ -62,7 +62,7 @@
         Id='*'
         Name='cleansh'
         UpgradeCode='F47C98E6-B908-4CB3-A38B-0EFD5F3DE62D'
-        Manufacturer='Obscura Tech'
+        Manufacturer='Relay'
         Language='1033'
         Codepage='1252'
         Version='$(var.Version)'>
@@ -70,7 +70,7 @@
         <Package Id='*'
             Keywords='Installer'
             Description='Sanitize your terminal output. One tool. One purpose.'
-            Manufacturer='Obscura Tech'
+            Manufacturer='Relay'
             InstallerVersion='450'
             Languages='1033'
             Compressed='yes'

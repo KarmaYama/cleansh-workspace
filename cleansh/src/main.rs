@@ -1,43 +1,20 @@
+// cleansh/src/main.rs
 //! Cleansh CLI Application
-//!
-//! `cleansh` is the command-line interface application that allows users to
-//! sanitize sensitive information from text content. This crate serves as
-//! the main executable wrapper, orchestrating the parsing of command-line
-//! arguments, managing input and output streams, handling application-specific
-//! features like user-interaction (e.g., donation prompts), and integrating
-//! with the core redaction logic provided by the `cleansh-core` library.
-//!
-//! ## Key Responsibilities of this Crate:
-//! - **Argument Parsing:** Defines and parses all CLI options and subcommands
-//!   using the `clap` crate.
-//! - **Input/Output Management:** Handles reading content from stdin or specified
-//!   files, and writing sanitized or statistical output to stdout, files, or
-//!   the system clipboard.
-//! - **Application State:** Manages persistent application state such as usage
-//!   counts and prompt timings, leveraging the `utils::app_state` module.
-//! - **User Interface:** Incorporates modules for theming, formatted output,
-//!   redaction summaries, and diff viewing (`ui` module).
-//! - **Command Execution:** Dispatches to specific command handlers (e.g., `sanitize`,
-//!   `scan`, `uninstall`) based on user input, found within the `commands` module.
-//! - **Integration:** Acts as the bridge between user commands and the core
-//!   redaction and validation functionalities exposed by `cleansh-core`.
-//!
-//! ## License
-//!
-//! Licensed under the Polyform Noncommercial License 1.0.0.
+//! License: MIT OR Apache-2.0
 
 use cleansh_core::{
     engine::SanitizationEngine,
     RegexEngine,
+    EntropyEngine,
     config::{merge_rules, RedactionConfig},
     RedactionSummaryItem,
 };
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result}; // Removed 'anyhow' macro
 use clap::Parser;
 use std::io::{self, Read, Write, IsTerminal, BufReader, BufRead};
 use std::fs;
 use std::env;
-use std::path::{PathBuf, Path};
+use std::path::PathBuf; // Removed 'Path' trait
 use log::{info, LevelFilter};
 use dotenvy;
 use std::collections::HashMap;
@@ -49,9 +26,6 @@ use cleansh::utils::app_state::AppState;
 use cleansh::utils::platform;
 use cleansh::cli::{Cli, Commands, EngineChoice, SanitizeCommand, ScanCommand, ProfilesCommand};
 use cleansh_core::profiles;
-
-use cleansh::{check_license_for_feature, consume_license_post_success};
-use cleansh::utils::license as license_utils;
 
 /// Creates a fully configured and compiled sanitization engine based on CLI arguments.
 fn create_sanitization_engine(
@@ -79,17 +53,19 @@ fn create_sanitization_engine(
 
     config.set_active_rules(enable_rules, disable_rules);
 
-    let engine: Box<dyn SanitizationEngine> = match engine_choice {
+    // OPEN CORE: All engines are now available without local license checks.
+    match engine_choice {
         EngineChoice::Regex => {
-            Box::new(RegexEngine::new(config)
-                .context("Failed to initialize RegexEngine")?)
+            let engine = Box::new(RegexEngine::new(config)
+                .context("Failed to initialize RegexEngine")?);
+            Ok(engine)
         },
         EngineChoice::Entropy => {
-            return Err(anyhow!("The 'entropy' engine is not yet implemented."));
+            let engine = Box::new(EntropyEngine::new(config)
+                .context("Failed to initialize EntropyEngine")?);
+            Ok(engine)
         }
-    };
-    
-    Ok(engine)
+    }
 }
 
 /// Reads input content from a file or stdin, handling both terminal and non-terminal cases.
@@ -192,7 +168,7 @@ fn handle_sanitize_command(opts: &SanitizeCommand, cli: &Cli, theme_map: &ui::th
     )?;
 
     if opts.line_buffered {
-        run_line_buffered_mode(engine, &opts, theme_map, cli.quiet)?;
+        run_line_buffered_mode(engine, &opts, theme_map, cli.quiet)
     } else {
         let input_content = read_input(&opts.input_file, theme_map)?;
 
@@ -204,17 +180,15 @@ fn handle_sanitize_command(opts: &SanitizeCommand, cli: &Cli, theme_map: &ui::th
             no_redaction_summary: opts.no_summary,
             quiet: cli.quiet,
         };
-        commands::cleansh::run_cleansh_opts(&*engine, cleansh_options, theme_map)?;
+        commands::cleansh::run_cleansh_opts(&*engine, cleansh_options, theme_map)
     }
-    
-    Ok(())
 }
 
 /// Handler for the `cleansh scan` command.
-fn handle_scan_command(opts: &ScanCommand, theme_map: &ui::theme::ThemeMap, state_path: &Path, app_state: &mut AppState) -> Result<()> {
-    // Check license first before running command logic
-    let token_opt = check_license_for_feature("scan", state_path, app_state, theme_map)?;
+fn handle_scan_command(opts: &ScanCommand, theme_map: &ui::theme::ThemeMap) -> Result<()> {
+    // OPEN CORE: License check removed. Scan is now free.
     
+    // We currently force Regex for scan, but we could allow entropy in future.
     let engine = create_sanitization_engine(
         opts.config.as_ref(),
         opts.profile.as_ref(),
@@ -223,75 +197,32 @@ fn handle_scan_command(opts: &ScanCommand, theme_map: &ui::theme::ThemeMap, stat
         &opts.disable,
     )?;
 
-    let res = commands::stats::run_stats_command(&opts, theme_map, &*engine);
-    
-    // Consume license only if the command was successful and a token was present
-    if res.is_ok() {
-        if let Some(token) = token_opt {
-            consume_license_post_success(&token, "scan", app_state, state_path, theme_map);
-        }
-    }
-
-    res
+    commands::stats::run_stats_command(&opts, theme_map, &*engine)
 }
 
-/// New helper function to centralize the license check, command execution, and consumption logic.
-fn gated_command<F>(feature: &str, state_path: &Path, app_state: &mut AppState, theme_map: &ui::theme::ThemeMap, f: F) -> Result<()>
-where
-    F: FnOnce(Option<&license_utils::LicenseToken>) -> Result<()>
-{
-    let token_opt = check_license_for_feature(feature, state_path, app_state, theme_map)?;
-
-    let res = f(token_opt.as_ref());
-    
-    if res.is_ok() {
-        if let Some(token) = token_opt {
-            consume_license_post_success(&token, feature, app_state, state_path, theme_map);
-        }
-    }
-    
-    res
-}
-
-/// Handler for the `profiles` command (gated per-subcommand feature keys).
-fn handle_profiles_command(opts: &ProfilesCommand, _cli: &Cli, theme_map: &ui::theme::ThemeMap, state_path: &Path, app_state: &mut AppState) -> Result<()> {
+/// Handler for the `profiles` command.
+fn handle_profiles_command(opts: &ProfilesCommand, _cli: &Cli, theme_map: &ui::theme::ThemeMap) -> Result<()> {
     match opts {
         ProfilesCommand::Sign { path, key_file } => {
-            gated_command("profiles:sign", state_path, app_state, theme_map, |token_opt| {
-                if token_opt.is_none() {
-                    // This is the test path, which skips the license check but must still have a valid RSA key to proceed.
-                    // The rest of the logic can assume `Ok(())`.
-                    commands::cleansh::warn_msg("Proceeding with profile signing in test mode. A valid key is still required.", theme_map);
-                }
-                
-                let key_bytes = fs::read(key_file)
-                    .context("Failed to read key file for signing.")?;
-                profiles::sign_profile(path, &key_bytes)?;
-                commands::cleansh::info_msg(format!("Profile '{}' signed successfully.", path.display()), theme_map);
-                Ok(())
-            })
+            // OPEN CORE: License check removed.
+            let key_bytes = fs::read(key_file)
+                .context("Failed to read key file for signing.")?;
+            profiles::sign_profile(path, &key_bytes)?;
+            commands::cleansh::info_msg(format!("Profile '{}' signed successfully.", path.display()), theme_map);
+            Ok(())
         },
         ProfilesCommand::Verify { path: _, pub_key_file: _ } => {
-            gated_command("profiles:verify", state_path, app_state, theme_map, |token_opt| {
-                if token_opt.is_none() {
-                    commands::cleansh::warn_msg("Skipping license validation for 'profiles:verify' in test mode.", theme_map);
-                }
-                commands::cleansh::warn_msg("RSA verification is not yet implemented. This command is gated but unchanged in behavior.", theme_map);
-                Ok(())
-            })
+            // OPEN CORE: License check removed.
+            commands::cleansh::warn_msg("RSA verification is not yet implemented.", theme_map);
+            Ok(())
         },
         ProfilesCommand::List => {
-            gated_command("profiles:list", state_path, app_state, theme_map, |token_opt| {
-                if token_opt.is_none() {
-                    commands::cleansh::warn_msg("Skipping license validation for 'profiles:list' in test mode.", theme_map);
-                }
-                let available_profiles = profiles::list_available_profiles();
-                commands::cleansh::info_msg("Available Profiles:", theme_map);
-                for profile in available_profiles {
-                    println!("- {}: {} ({})", profile.profile_name, profile.version, profile.display_name.unwrap_or_default());
-                }
-                Ok(())
-            })
+            let available_profiles = profiles::list_available_profiles();
+            commands::cleansh::info_msg("Available Profiles:", theme_map);
+            for profile in available_profiles {
+                println!("- {}: {} ({})", profile.profile_name, profile.version, profile.display_name.unwrap_or_default());
+            }
+            Ok(())
         },
     }
 }
@@ -340,21 +271,21 @@ fn main() -> Result<()> {
 
             let command_result = match opts {
                 Commands::Sanitize(sanitize_opts) => handle_sanitize_command(sanitize_opts, &cli, &theme_map),
-                Commands::Scan(scan_opts) => handle_scan_command(scan_opts, &theme_map, &app_state_path, &mut app_state),
-                Commands::Profiles(profile_opts) => handle_profiles_command(profile_opts, &cli, &theme_map, &app_state_path, &mut app_state),
+                Commands::Scan(scan_opts) => handle_scan_command(scan_opts, &theme_map),
+                Commands::Profiles(profile_opts) => handle_profiles_command(profile_opts, &cli, &theme_map),
                 Commands::Uninstall { yes: _ } => {
                     unreachable!()
                 }
             };
 
-            // Donation prompt logic
+            // Donation prompt logic - Retained as this is a community funding mechanism, not a license gate.
             if !app_state.donation_prompts_disabled {
                 if let Err(e) = app_state.check_and_prompt_donation(&theme_map) {
                     commands::cleansh::error_msg(format!("Failed to handle donation prompt: {}", e), &theme_map);
                 }
             }
 
-            // Save app state at exit (ensures non-licensed changes also persist)
+            // Save app state at exit (persists donation preference)
             if let Err(e) = app_state.save(&app_state_path) {
                 commands::cleansh::warn_msg(format!("Failed to save app state: {}", e), &theme_map);
             }

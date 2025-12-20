@@ -28,14 +28,16 @@ We deeply appreciate the efforts of security researchers and the open-source com
 
 ### How to Report a Vulnerability:
 
-1.  **Direct Email:** Please report vulnerabilities by sending an an email to `licenses@obscuratech.tech`.
-2.  **Encryption (Optional but Recommended):** For sensitive disclosures, we strongly recommend encrypting your report. Our PGP public key is available on common key servers (e.g., `keys.openpgp.org`, `pgp.mit.edu`) by searching for `licenses@obscuratech.tech`.
+1.  **Direct Email:** Please report vulnerabilities by sending an email to `security@relay.africa`.
+2.  **Encryption (Optional but Recommended):** For sensitive disclosures, we strongly recommend encrypting your report. Our PGP public key is available on common key servers (e.g., `keys.openpgp.org`, `pgp.mit.edu`) by searching for `security@relay.africa`.
 3.  **Provide Details:** In your report, please include as much detail as possible:
     * A clear and concise description of the vulnerability.
     * Steps to reproduce the vulnerability.
     * The version of `CleanSH` affected (e.g., `v0.1.8`).
     * The operating system and Rust toolchain version you used.
     * Any potential impact or exploit scenario.
+
+**Please do not open public GitHub issues for security vulnerabilities.**
 
 ---
 
@@ -89,9 +91,9 @@ We recognize that `CleanSH` operates in environments where sensitive information
 ### 5. Trust Boundaries
 
 `CleanSH` is a **stateless utility**—it does not:
-* Connect to the network or send telemetry
-* Write configuration data silently
-* Persist logs without user opt-in
+* Connect to the network or send telemetry.
+* Write configuration data silently.
+* Persist logs without user opt-in.
 
 This design minimizes risk by keeping the tool **predictable, inspectable, and local-first**.
 
@@ -113,3 +115,7 @@ If you identify a concern not addressed here, or believe a threat model has been
     * If the vulnerability is declined (e.g., deemed not a security issue or out of scope), we will provide a clear explanation for our decision.
 
 **Please do not disclose potential vulnerabilities publicly until we have had an opportunity to address them.** We are committed to addressing valid concerns promptly and openly.
+
+---
+
+*Copyright 2025 Relay.*

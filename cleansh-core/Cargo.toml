@@ -1,11 +1,12 @@
+# cleansh-core/Cargo.toml
 # File: Cargo.toml
 
 [package]
 name = "cleansh-core"
 version = "0.1.2"
 edition = "2021"
-authors = ["Obscura Tech"]
-license-file = "LICENSE.md"
+authors = ["Relay"]
+license = "MIT OR Apache-2.0"
 description = "Core library for CleanSH, providing essential data sanitization rules, compilation, and application logic independent of the CLI."
 repository = "https://github.com/KarmaYama/cleansh-workspace"
 homepage = "https://github.com/KarmaYama/cleansh-workspace"
@@ -31,6 +32,9 @@ chrono = { version = "0.4", features = ["serde"] }
 thiserror = "2.0"
 uuid = { version = "1.18", features = ["serde", "v4"] } 
 bincode = { version = "2.0", features = ["serde"] }
+
+# Internal crate dependency
+cleansh-entropy = { path = "../cleansh-entropy" }
 
 [dev-dependencies]
 test-log = "0.2.14" 

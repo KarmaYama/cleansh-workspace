@@ -131,8 +131,9 @@ pub use errors::CleanshError;
 /// Re-exports types related to the core sanitization engine trait.
 pub use engine::SanitizationEngine;
 
-/// Re-exports the concrete `RegexEngine` implementation from its new location.
+/// Re-exports the concrete `RegexEngine` and `EntropyEngine` implementations from their respective locations.
 pub use engines::regex_engine::RegexEngine;
+pub use engines::entropy_engine::EntropyEngine;
 
 /// Re-exports types for detailed redaction matches and sensitive data reporting.
 pub use redaction_match::{RedactionLog, RedactionMatch, redact_sensitive};
