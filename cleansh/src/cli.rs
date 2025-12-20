@@ -1,31 +1,43 @@
-// cleansh/src/cli.rs
-//! This file defines the command-line interface (CLI) for the cleansh application,
-//! including all available commands and their arguments.
-//! License: Polyform Noncommercial License 1.0.0
+//! Command-line interface (CLI) definition for the `cleansh` application.
+//!
+//! This module utilizes `clap` to define the command structure, arguments, and subcommands.
+//! It serves as the entry point for parsing user intent and routing it to the appropriate
+//! logic within the application.
+//!
+//! License: MIT OR Apache-2.0
 
 use clap::{Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
 
 /// Top-level CLI definition.
+///
+/// Cleansh is designed to be a high-trust, local-first utility for redacting
+/// sensitive data from text streams and files.
 #[derive(Parser, Debug)]
 #[command(
     name = "cleansh",
-    author = "Obscura Team (Relay)",
+    author = "Relay Team (Relay)",
     version = env!("CARGO_PKG_VERSION"),
     about = "Securely redact sensitive data from text",
     long_about = "Cleansh is a command-line utility for securely redacting sensitive information from text-based data. It helps you sanitize logs, code, documents, or terminal output to ensure that Personally Identifiable Information (PII) and other sensitive patterns are removed or obfuscated according to a configurable rule set.",
     arg_required_else_help = true,
 )]
 pub struct Cli {
-    /// Disable informational messages
+    /// Disable informational messages.
+    /// 
+    /// Useful for scripting where only errors or sanitized output are required.
     #[arg(long, short = 'q', help = "Suppress all informational and debug messages.")]
     pub quiet: bool,
 
-    /// Enable debug logging (overrides RUST_LOG for 'cleansh' crate to DEBUG)
+    /// Enable debug logging.
+    /// 
+    /// Overrides RUST_LOG settings for the 'cleansh' crate to the DEBUG level.
     #[arg(long, short = 'd', help = "Enable debug logging.")]
     pub debug: bool,
 
-    /// Explicitly disable debug logging, even if RUST_LOG is set to DEBUG
+    /// Explicitly disable debug logging.
+    /// 
+    /// Overrides RUST_LOG even if it is set to DEBUG elsewhere.
     #[arg(long = "disable-debug", help = "Disable debug logging, overriding RUST_LOG.")]
     pub disable_debug: bool,
 
@@ -33,7 +45,9 @@ pub struct Cli {
     #[arg(long = "theme", value_name = "FILE", help = "Specify the path to a custom YAML theme file.")]
     pub theme: Option<PathBuf>,
 
-    /// Disable donation prompts that appear after certain usage thresholds
+    /// Disable donation prompts.
+    /// 
+    /// Donation prompts appear after specific usage thresholds to support project maintenance.
     #[arg(long = "disable-donation-prompts", help = "Disable future prompts for donations.")]
     pub disable_donation_prompts: bool,
 
@@ -41,7 +55,7 @@ pub struct Cli {
     #[arg(long = "suppress-donation-prompt", help = "Suppress donation prompt for this run only (does not persist).", global = true)]
     pub suppress_donation_prompt: bool,
 
-    /// The subcommand to run
+    /// The subcommand to run.
     #[command(subcommand)]
     pub command: Commands,
 }
@@ -81,6 +95,10 @@ pub struct SanitizeCommand {
     #[arg(long, short = 'o', value_name = "FILE", help = "Write output to a specified file instead of stdout.")]
     pub output: Option<PathBuf>,
     
+    /// Visualizes entropy intensity using terminal colors instead of redacting.
+    #[arg(long = "heatmap", help = "Visualize entropy intensity across the input.")]
+    pub heatmap: bool,
+
     /// Copy sanitized output to the system clipboard.
     #[arg(long, short = 'c', help = "Copy sanitized output to the system clipboard.")]
     pub clipboard: bool,
@@ -108,6 +126,18 @@ pub struct SanitizeCommand {
     /// Select which sanitization engine to use.
     #[arg(long = "engine", value_name = "ENGINE", default_value = "regex", help = "Select a sanitization engine (e.g., 'regex' or 'entropy').")]
     pub engine: EngineChoice,
+
+    /// Confidence threshold for the entropy engine.
+    /// 
+    /// Range: 0.0 (hypersensitive) to 1.0 (strict). Default is 0.5.
+    #[arg(long = "entropy-threshold", value_name = "FLOAT", help = "Set the confidence threshold for entropy detection.")]
+    pub entropy_threshold: Option<f64>,
+
+    /// Sliding window size in bytes for the entropy engine.
+    /// 
+    /// Smaller values (e.g., 16) are more sensitive to short keys but noisier.
+    #[arg(long = "entropy-window", value_name = "BYTES", help = "Set the sliding window size for the entropy engine.")]
+    pub entropy_window: Option<usize>,
 
     /// Process input line by line (useful for streaming data from pipes).
     #[arg(long = "line-buffered", help = "Process input line by line (useful for streaming data from pipes).")]
@@ -201,6 +231,7 @@ pub struct SyncProfilesCommand {
 /// Subcommands for the `profiles` command.
 #[derive(Subcommand, Debug)]
 pub enum ProfilesCommand {
+    /// Signs a profile YAML file using a key from a file.
     #[command(about = "Signs a profile YAML file using a key from a file.")]
     Sign {
         /// The path to the profile YAML file to sign.
@@ -210,6 +241,7 @@ pub enum ProfilesCommand {
         #[arg(long = "key", value_name = "KEY_FILE", help = "The path to the key file for signing.")]
         key_file: PathBuf,
     },
+    /// Verifies the signature of a profile YAML file.
     #[command(about = "Verifies the signature of a profile YAML file.")]
     Verify {
         /// The path to the profile YAML file to verify.
@@ -219,6 +251,7 @@ pub enum ProfilesCommand {
         #[arg(long = "public-key", value_name = "PUB_KEY_FILE", help = "The path to the public key for verification.")]
         pub_key_file: PathBuf,
     },
+    /// Lists all available local profiles.
     #[command(about = "Lists all available local profiles.")]
     List,
 }
@@ -226,8 +259,8 @@ pub enum ProfilesCommand {
 /// Enum for selecting the sanitization engine.
 #[derive(Debug, Clone, ValueEnum, PartialEq)]
 pub enum EngineChoice {
-    /// The default regular expression engine.
+    /// The default regular expression engine. Fast and accurate for known patterns.
     Regex,
-    /// The dynamic contextual entropy engine (Pro feature).
+    /// The dynamic contextual entropy engine. Finds high-randomness secrets using statistical analysis.
     Entropy,
 }

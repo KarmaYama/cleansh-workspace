@@ -1,7 +1,9 @@
-// cleansh-core/src/engines/entropy_engine.rs
 //! A `SanitizationEngine` implementation that uses Shannon entropy and 
 //! contextual analysis to identify and redact high-randomness secrets.
-//! License: BUSL-1.1
+//!
+//! This engine uses a sliding-window approach to be tokenizer-agnostic.
+//!
+//! License: MIT OR Apache-2.0
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -17,10 +19,11 @@ use crate::profiles::EngineOptions;
 use crate::engine::SanitizationEngine;
 use crate::sanitizers::compiler::{get_or_compile_rules, CompiledRules};
 
+// Import from the low-level math crate
 use cleansh_entropy::engine::EntropyEngine as LowLevelEntropyEngine;
 
-/// Maps byte indices from a stripped string back to the original string,
-/// preserving alignment when ANSI escape codes are removed.
+/// Maps byte indices from a stripped string back to the original string.
+/// This ensures redaction works correctly on text containing ANSI escape codes.
 #[derive(Debug)]
 struct StrippedIndexMapper {
     map: Vec<usize>,
@@ -47,7 +50,6 @@ impl StrippedIndexMapper {
         }
         
         map.push(original.len());
-
         Self { map }
     }
 
@@ -57,7 +59,7 @@ impl StrippedIndexMapper {
     }
 }
 
-/// A sanitization engine that detects secrets based on statistical entropy and context.
+/// A high-level sanitization engine that utilizes the Entropy detection backend.
 #[derive(Debug)]
 pub struct EntropyEngine {
     config: RedactionConfig,
@@ -67,21 +69,22 @@ pub struct EntropyEngine {
 }
 
 impl EntropyEngine {
-    /// Initializes the engine with the provided configuration.
+    /// Initializes the engine using the global configuration.
     pub fn new(config: RedactionConfig) -> Result<Self> {
         Self::with_options(config, EngineOptions::default())
     }
 
-    /// Initializes the engine with configuration and runtime options.
-    ///
-    /// It extracts the entropy threshold from `config.engines.entropy.threshold`.
-    /// If not set, it defaults to `0.5`.
+    /// Initializes the engine with support for dynamic detection parameters.
     pub fn with_options(config: RedactionConfig, options: EngineOptions) -> Result<Self> {
         let threshold = config.engines.entropy.threshold.unwrap_or(0.5);
+        let window_size = config.engines.entropy.window_size.unwrap_or(24);
         
-        log::debug!("Initializing EntropyEngine with confidence threshold: {}", threshold);
+        log::debug!(
+            "Initializing EntropyEngine: threshold={}, window_size={}", 
+            threshold, window_size
+        );
 
-        let inner_engine = LowLevelEntropyEngine::new(threshold);
+        let inner_engine = LowLevelEntropyEngine::new(threshold, window_size);
         let compiled_rules = get_or_compile_rules(&config)?;
 
         Ok(Self {
@@ -127,21 +130,14 @@ impl EntropyEngine {
 
         let rule = RedactionRule {
             name: "high_entropy_secret".to_string(),
-            description: Some(format!("Dynamic Entropy Detection (Confidence: {:.2}, Entropy: {:.2})", confidence, entropy)),
-            pattern: None,
+            description: Some(format!("Entropy Detection (Confidence: {:.2}, Entropy: {:.2})", confidence, entropy)),
             replace_with: "[ENTROPY_REDACTED]".to_string(),
             pattern_type: "entropy".to_string(),
             version: "1.0.0".to_string(),
             created_at: Utc::now().to_rfc3339(),
-            updated_at: Utc::now().to_rfc3339(),
             author: "CleanSH Entropy Engine".to_string(),
-            multiline: false,
-            dot_matches_new_line: false,
-            opt_in: false,
-            programmatic_validation: false,
-            enabled: Some(true),
             severity: Some("high".to_string()),
-            tags: None,
+            ..Default::default()
         };
 
         RedactionMatch {
@@ -163,14 +159,12 @@ impl EntropyEngine {
         let stripped_bytes = strip(content.as_bytes());
         let stripped_input = String::from_utf8_lossy(&stripped_bytes);
 
+        // Perform tokenizer-agnostic sliding window scan
         let entropy_matches = self.inner_engine.scan(stripped_input.as_bytes());
 
-        let mut red_matches = Vec::new();
-
-        for em in entropy_matches {
+        entropy_matches.into_iter().map(|em| {
             let match_str = &stripped_input[em.start..em.end];
-            
-            let rm = self.create_redaction_match(
+            self.create_redaction_match(
                 match_str,
                 em.start as u64,
                 em.end as u64,
@@ -178,11 +172,8 @@ impl EntropyEngine {
                 em.entropy,
                 &stripped_input,
                 source_id
-            );
-            red_matches.push(rm);
-        }
-
-        red_matches
+            )
+        }).collect()
     }
 }
 
@@ -199,11 +190,10 @@ impl SanitizationEngine for EntropyEngine {
         mut audit_log: Option<&mut crate::audit_log::AuditLog>,
     ) -> Result<(String, Vec<RedactionSummaryItem>)> {
         let matches = self.find_matches_internal(content, source_id);
-        
         let mapper = StrippedIndexMapper::new(content);
+        
         let mut sanitized_content = String::with_capacity(content.len());
         let mut last_end = 0usize;
-
         let mut summary_map: HashMap<String, RedactionSummaryItem> = HashMap::new();
 
         let mut sorted_matches = matches;
@@ -213,17 +203,16 @@ impl SanitizationEngine for EntropyEngine {
             let original_start_byte = mapper.map_index(m.start as usize);
             let original_end_byte = mapper.map_index(m.end as usize);
 
-            if original_end_byte <= last_end {
-                continue;
-            }
+            if original_end_byte <= last_end { continue; }
 
             let current_start = original_start_byte.max(last_end);
             sanitized_content.push_str(&content[last_end..current_start]);
             sanitized_content.push_str(&m.sanitized_string);
             last_end = original_end_byte;
 
+            // Audit Logging
             if let Some(log) = audit_log.as_mut() {
-                let rlog = RedactionLog {
+                let _ = log.append(&RedactionLog {
                     timestamp: m.timestamp.clone().unwrap_or_default(),
                     run_id: run_id.to_string(),
                     file_path: source_id.to_string(),
@@ -235,8 +224,7 @@ impl SanitizationEngine for EntropyEngine {
                     match_hash: m.sample_hash.clone().unwrap_or_default(),
                     start: m.start,
                     end: m.end,
-                };
-                let _ = log.append(&rlog);
+                });
             }
 
             let entry = summary_map.entry(m.rule_name.clone()).or_insert_with(|| RedactionSummaryItem {
@@ -251,14 +239,11 @@ impl SanitizationEngine for EntropyEngine {
         }
 
         sanitized_content.push_str(&content[last_end..]);
-
-        let summary: Vec<RedactionSummaryItem> = summary_map.into_values().collect();
-        Ok((sanitized_content, summary))
+        Ok((sanitized_content, summary_map.into_values().collect()))
     }
 
     fn analyze_for_stats(&self, content: &str, source_id: &str) -> Result<Vec<RedactionSummaryItem>> {
         let matches = self.find_matches_internal(content, source_id);
-        
         let mut summary_map: HashMap<String, RedactionSummaryItem> = HashMap::new();
         for m in matches {
             let entry = summary_map.entry(m.rule_name.clone()).or_insert_with(|| RedactionSummaryItem {
@@ -271,7 +256,6 @@ impl SanitizationEngine for EntropyEngine {
             entry.original_texts.push(m.original_string);
             entry.sanitized_texts.push(m.sanitized_string);
         }
-        
         Ok(summary_map.into_values().collect())
     }
 
@@ -282,15 +266,7 @@ impl SanitizationEngine for EntropyEngine {
         Ok(matches)
     }
 
-    fn compiled_rules(&self) -> &CompiledRules {
-        &self.compiled_rules
-    }
-
-    fn get_rules(&self) -> &RedactionConfig {
-        &self.config
-    }
-
-    fn get_options(&self) -> &EngineOptions {
-        &self.options
-    }
+    fn compiled_rules(&self) -> &CompiledRules { &self.compiled_rules }
+    fn get_rules(&self) -> &RedactionConfig { &self.config }
+    fn get_options(&self) -> &EngineOptions { &self.options }
 }

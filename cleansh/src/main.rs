@@ -1,5 +1,8 @@
-// cleansh/src/main.rs
 //! Cleansh CLI Application
+//! 
+//! This is the main entry point for the cleansh CLI, responsible for parsing 
+//! arguments, initializing engines, and orchestrating the redaction pipeline.
+//!
 //! License: MIT OR Apache-2.0
 
 use cleansh_core::{
@@ -9,13 +12,13 @@ use cleansh_core::{
     config::{merge_rules, RedactionConfig},
     RedactionSummaryItem,
 };
-use anyhow::{Context, Result}; // Removed 'anyhow' macro
+use anyhow::{Context, Result};
 use clap::Parser;
 use std::io::{self, Read, Write, IsTerminal, BufReader, BufRead};
 use std::fs;
 use std::env;
-use std::path::PathBuf; // Removed 'Path' trait
-use log::{info, LevelFilter};
+use std::path::PathBuf;
+use log::{info, debug, LevelFilter};
 use dotenvy;
 use std::collections::HashMap;
 
@@ -28,22 +31,28 @@ use cleansh::cli::{Cli, Commands, EngineChoice, SanitizeCommand, ScanCommand, Pr
 use cleansh_core::profiles;
 
 /// Creates a fully configured and compiled sanitization engine based on CLI arguments.
+/// 
+/// This function merges default rules, profile settings, and manual CLI overrides 
+/// (like entropy thresholds or window sizes) into a final engine instance.
 fn create_sanitization_engine(
     config_path: Option<&PathBuf>,
     profile_name: Option<&String>,
     engine_choice: &EngineChoice,
     enable_rules: &[String],
     disable_rules: &[String],
+    cli_entropy_threshold: Option<f64>,
+    cli_entropy_window: Option<usize>,
 ) -> Result<Box<dyn SanitizationEngine>> {
+    // 1. Start with baseline default rules
     let mut config = RedactionConfig::load_default_rules()
         .context("Failed to load default redaction rules")?;
 
+    // 2. Layer on Profile or custom Config file
     if let Some(name) = profile_name {
         let profile = profiles::load_profile_by_name(name)
             .context("Failed to load specified profile")?;
 
         profile.validate(&config)?;
-
         config = profiles::apply_profile_to_config(&profile, config);
     } else if let Some(path) = config_path {
         let user_config = RedactionConfig::load_from_file(path)
@@ -51,9 +60,21 @@ fn create_sanitization_engine(
         config = merge_rules(config, Some(user_config));
     }
 
+    // 3. Apply Heuristic Tuning Overrides from CLI flags
+    // These take the highest precedence.
+    if let Some(t) = cli_entropy_threshold {
+        debug!("Applying CLI override: entropy threshold = {}", t);
+        config.engines.entropy.threshold = Some(t);
+    }
+    if let Some(w) = cli_entropy_window {
+        debug!("Applying CLI override: entropy window size = {}", w);
+        config.engines.entropy.window_size = Some(w);
+    }
+
+    // 4. Apply explicit rule enabling/disabling
     config.set_active_rules(enable_rules, disable_rules);
 
-    // OPEN CORE: All engines are now available without local license checks.
+    // 5. Instantiate the requested engine
     match engine_choice {
         EngineChoice::Regex => {
             let engine = Box::new(RegexEngine::new(config)
@@ -92,8 +113,7 @@ fn read_input(input_file: &Option<PathBuf>, theme_map: &ui::theme::ThemeMap) -> 
     }
 }
 
-/// Reads input line-by-line from stdin, sanitizes each line using the provided engine,
-/// writes output line-by-line to stdout or a file, and maintains redaction statistics.
+/// Reads input line-by-line from stdin for real-time stream processing.
 fn run_line_buffered_mode(engine: Box<dyn SanitizationEngine>, opts: &SanitizeCommand, theme_map: &ui::theme::ThemeMap, quiet: bool) -> Result<()> {
     let stdin = io::stdin().lock();
     let mut reader = BufReader::new(stdin);
@@ -149,7 +169,7 @@ fn run_line_buffered_mode(engine: Box<dyn SanitizationEngine>, opts: &SanitizeCo
     Ok(())
 }
 
-/// Handles the `cleansh sanitize` command.
+/// Entrypoint for the `sanitize` subcommand.
 fn handle_sanitize_command(opts: &SanitizeCommand, cli: &Cli, theme_map: &ui::theme::ThemeMap) -> Result<()> {
     if opts.line_buffered && (opts.diff || opts.clipboard || opts.input_file.is_some()) {
         commands::cleansh::error_msg(
@@ -165,6 +185,8 @@ fn handle_sanitize_command(opts: &SanitizeCommand, cli: &Cli, theme_map: &ui::th
         &opts.engine,
         &opts.enable,
         &opts.disable,
+        opts.entropy_threshold, // Pass CLI threshold override
+        opts.entropy_window,    // Pass CLI window override
     )?;
 
     if opts.line_buffered {
@@ -184,27 +206,27 @@ fn handle_sanitize_command(opts: &SanitizeCommand, cli: &Cli, theme_map: &ui::th
     }
 }
 
-/// Handler for the `cleansh scan` command.
+/// Entrypoint for the `scan` subcommand.
 fn handle_scan_command(opts: &ScanCommand, theme_map: &ui::theme::ThemeMap) -> Result<()> {
-    // OPEN CORE: License check removed. Scan is now free.
-    
-    // We currently force Regex for scan, but we could allow entropy in future.
+    // Note: Scan currently defaults to Regex, but could support Entropy in the future 
+    // by adding threshold/window flags to ScanCommand in cli.rs.
     let engine = create_sanitization_engine(
         opts.config.as_ref(),
         opts.profile.as_ref(),
         &EngineChoice::Regex,
         &opts.enable,
         &opts.disable,
+        None, // No specific CLI entropy overrides for scan yet
+        None,
     )?;
 
     commands::stats::run_stats_command(&opts, theme_map, &*engine)
 }
 
-/// Handler for the `profiles` command.
+/// Entrypoint for profile management commands.
 fn handle_profiles_command(opts: &ProfilesCommand, _cli: &Cli, theme_map: &ui::theme::ThemeMap) -> Result<()> {
     match opts {
         ProfilesCommand::Sign { path, key_file } => {
-            // OPEN CORE: License check removed.
             let key_bytes = fs::read(key_file)
                 .context("Failed to read key file for signing.")?;
             profiles::sign_profile(path, &key_bytes)?;
@@ -212,7 +234,6 @@ fn handle_profiles_command(opts: &ProfilesCommand, _cli: &Cli, theme_map: &ui::t
             Ok(())
         },
         ProfilesCommand::Verify { path: _, pub_key_file: _ } => {
-            // OPEN CORE: License check removed.
             commands::cleansh::warn_msg("RSA verification is not yet implemented.", theme_map);
             Ok(())
         },
@@ -227,13 +248,12 @@ fn handle_profiles_command(opts: &ProfilesCommand, _cli: &Cli, theme_map: &ui::t
     }
 }
 
-
 fn main() -> Result<()> {
     dotenvy::dotenv().ok();
     
     let cli = Cli::parse();
     
-    // ── Honor test override for app state path ───────────────────────────────────
+    // Resolve app state path with potential test overrides
     let app_state_path: PathBuf = env::var("CLEANSH_STATE_FILE_OVERRIDE_FOR_TESTS")
         .map(PathBuf::from)
         .unwrap_or_else(|_| {
@@ -243,10 +263,10 @@ fn main() -> Result<()> {
                 env::current_dir().expect("Failed to get current dir").join("cleansh_state.json")
             }
         });
-    // ── End override block ─────────────────────────────────────────────────────
     
     let theme_map = ui::theme::build_theme_map(cli.theme.as_ref())?;
     
+    // Determine log level based on quiet/debug flags
     let effective_log_level = if cli.quiet {
         Some(LevelFilter::Off)
     } else if cli.debug && !cli.disable_debug {
@@ -256,36 +276,33 @@ fn main() -> Result<()> {
     } else {
         None
     };
+
     logger::init_logger(effective_log_level);
     info!("cleansh started. Version: {}", env!("CARGO_PKG_VERSION"));
     
-    // We only load the app state if the command is not `uninstall`.
-    let mut app_state;
     let result = match cli.command {
-        Commands::Uninstall { yes } => commands::uninstall::elevate_and_run_uninstall(yes, &theme_map),
+        Commands::Uninstall { yes } => {
+            commands::uninstall::elevate_and_run_uninstall(yes, &theme_map)
+        },
         ref opts @ _ => {
-            // Load or create the AppState for all other commands
-            app_state = AppState::load(&app_state_path)?;
-            // Set donation prompts disabled state after loading, so the CLI overrides previous state.
+            let mut app_state = AppState::load(&app_state_path)?;
             app_state.donation_prompts_disabled = cli.disable_donation_prompts || cli.quiet;
 
             let command_result = match opts {
                 Commands::Sanitize(sanitize_opts) => handle_sanitize_command(sanitize_opts, &cli, &theme_map),
                 Commands::Scan(scan_opts) => handle_scan_command(scan_opts, &theme_map),
                 Commands::Profiles(profile_opts) => handle_profiles_command(profile_opts, &cli, &theme_map),
-                Commands::Uninstall { yes: _ } => {
-                    unreachable!()
-                }
+                Commands::Uninstall { .. } => unreachable!(),
             };
 
-            // Donation prompt logic - Retained as this is a community funding mechanism, not a license gate.
+            // Post-command community engagement
             if !app_state.donation_prompts_disabled {
                 if let Err(e) = app_state.check_and_prompt_donation(&theme_map) {
-                    commands::cleansh::error_msg(format!("Failed to handle donation prompt: {}", e), &theme_map);
+                    debug!("Donation prompt error (non-fatal): {}", e);
                 }
             }
 
-            // Save app state at exit (persists donation preference)
+            // Persistence
             if let Err(e) = app_state.save(&app_state_path) {
                 commands::cleansh::warn_msg(format!("Failed to save app state: {}", e), &theme_map);
             }

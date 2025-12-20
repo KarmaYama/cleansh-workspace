@@ -1,11 +1,10 @@
-// cleansh-core/src/config.rs
 //! Configuration management for `CleanSH-core`.
 //!
 //! This module defines the core data structures for redaction rules and engine configurations.
 //! It handles serialization/deserialization of YAML configurations and provides utilities
 //! for loading, merging, and validating these configs.
 //!
-//! License: BUSL-1.1
+//! License: MIT OR Apache-2.0
 
 use anyhow::{anyhow, Context, Result};
 use serde::{Deserialize, Serialize};
@@ -19,11 +18,11 @@ use std::hash::{Hash, Hasher};
 /// Maximum allowed length for a regex pattern string.
 pub const MAX_PATTERN_LENGTH: usize = 500;
 
-/// Represents a single redaction rule.
+/// Represents a single redaction rule used by the Regex engine.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(default)]
 pub struct RedactionRule {
-    /// Unique identifier for the rule.
+    /// Unique identifier for the rule (e.g., "aws_access_key").
     pub name: String,
     /// Human-readable description of what the rule targets.
     pub description: Option<String>,
@@ -37,17 +36,19 @@ pub struct RedactionRule {
     pub created_at: String,
     pub author: String,
     pub updated_at: String,
-    /// If true, `.` matches newlines and `^`/`$` match line start/end.
+    /// If true, enables multiline mode for the regex engine.
     pub multiline: bool,
-    /// If true, `.` matches newlines.
+    /// If true, the dot character `.` in regex will match newlines.
     pub dot_matches_new_line: bool,
     /// If true, the rule is disabled unless explicitly enabled in the profile.
     pub opt_in: bool,
-    /// If true, requires external programmatic validation (e.g., Luhn check).
+    /// If true, requires external programmatic validation (e.g., SSN checksum).
     pub programmatic_validation: bool,
     /// Explicit override for enabling/disabling the rule.
     pub enabled: Option<bool>,
+    /// Security severity level (e.g., "high", "medium").
     pub severity: Option<String>,
+    /// Metadata tags for categorization.
     pub tags: Option<Vec<String>>,
 }
 
@@ -97,14 +98,11 @@ impl Default for RedactionRule {
 /// Configuration settings specific to the Entropy Engine.
 #[derive(Debug, Default, Deserialize, Serialize, Clone, PartialEq)]
 pub struct EntropyConfig {
-    /// The confidence threshold for flagging a token as a secret.
-    ///
-    /// The score is calculated as `(entropy_z_score / 5.0) + context_score`.
-    /// The maximum possible score is 3.0.
-    ///
-    /// * Default: `0.5`
-    /// * Range: `0.0` (hypersensitive) to `3.0` (strictest).
+    /// The confidence threshold for flagging a token as a secret (default: 0.5).
     pub threshold: Option<f64>,
+    /// The size of the scanning window in bytes (default: 24).
+    /// Smaller windows are more aggressive; larger windows reduce noise.
+    pub window_size: Option<usize>,
 }
 
 impl Hash for EntropyConfig {
@@ -114,6 +112,7 @@ impl Hash for EntropyConfig {
         } else {
             0u64.hash(state);
         }
+        self.window_size.hash(state);
     }
 }
 
@@ -124,18 +123,17 @@ pub struct EngineConfig {
     pub entropy: EntropyConfig,
 }
 
-/// Represents the top-level configuration structure.
+/// Represents the top-level configuration structure for CleanSH.
 #[derive(Debug, Default, Deserialize, Serialize, Clone, PartialEq)]
 pub struct RedactionConfig {
     /// A list of regex-based redaction rules.
     pub rules: Vec<RedactionRule>,
-    
-    /// Engine-specific settings (e.g., entropy thresholds).
+    /// Engine-specific settings (e.g., entropy thresholds and windows).
     #[serde(default)]
     pub engines: EngineConfig,
 }
 
-/// Represents a single item in the redaction summary.
+/// Represents a single item in the redaction summary for the UI.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RedactionSummaryItem {
     pub rule_name: String,
@@ -185,7 +183,7 @@ impl RedactionConfig {
         Ok(config)
     }
 
-    /// Filters active rules based on enable/disable lists.
+    /// Filters active rules based on enable/disable lists provided via CLI.
     pub fn set_active_rules(&mut self, enable_rules: &[String], disable_rules: &[String]) {
         let enable_set: HashSet<&str> = enable_rules.iter().map(String::as_str).collect();
         let disable_set: HashSet<&str> = disable_rules.iter().map(String::as_str).collect();
@@ -234,8 +232,11 @@ pub fn merge_rules(
              debug!("Overriding entropy threshold with user value: {}", user_threshold);
              final_engines.entropy.threshold = Some(user_threshold);
         }
-    } else {
-        debug!("No user configuration provided. Using default rules.");
+
+        if let Some(user_window) = user_cfg.engines.entropy.window_size {
+            debug!("Overriding entropy window size with user value: {}", user_window);
+            final_engines.entropy.window_size = Some(user_window);
+        }
     }
 
     let final_rules: Vec<RedactionRule> = final_rules_map.into_values().collect();
@@ -260,41 +261,43 @@ fn validate_rules(rules: &[RedactionRule]) -> Result<()> {
             errors.push(format!("Duplicate rule name found: '{}'.", rule.name));
         }
 
-        let pattern = match &rule.pattern {
-            Some(p) => p,
-            None => {
-                errors.push(format!("Rule '{}' is missing the `pattern` field.", rule.name));
+        if rule.pattern_type == "regex" {
+            let pattern = match &rule.pattern {
+                Some(p) => p,
+                None => {
+                    errors.push(format!("Rule '{}' is missing the `pattern` field.", rule.name));
+                    continue;
+                }
+            };
+
+            if pattern.is_empty() {
+                errors.push(format!("Rule '{}' has an empty `pattern` field.", rule.name));
+            }
+            
+            if let Err(e) = Regex::new(pattern) {
+                errors.push(format!("Rule '{}' has an invalid regex pattern: {}", rule.name, e));
                 continue;
             }
-        };
-
-        if pattern.is_empty() {
-            errors.push(format!("Rule '{}' has an empty `pattern` field.", rule.name));
-        }
-        
-        if let Err(e) = Regex::new(pattern) {
-            errors.push(format!("Rule '{}' has an invalid regex pattern: {}", rule.name, e));
-            continue;
-        }
-        
-        let mut group_count = 0;
-        let mut is_escaped = false;
-        for c in pattern.chars() {
-            match c {
-                '\\' => is_escaped = !is_escaped,
-                '(' if !is_escaped => group_count += 1,
-                _ => is_escaped = false,
+            
+            let mut group_count = 0;
+            let mut is_escaped = false;
+            for c in pattern.chars() {
+                match c {
+                    '\\' => is_escaped = !is_escaped,
+                    '(' if !is_escaped => group_count += 1,
+                    _ => is_escaped = false,
+                }
             }
-        }
 
-        for cap in capture_group_regex.captures_iter(&rule.replace_with) {
-            if let Some(group_num_str) = cap.get(1) {
-                if let Ok(group_num) = group_num_str.as_str().parse::<usize>() {
-                    if group_num > group_count {
-                        errors.push(format!(
-                            "Rule '{}': replacement string references non-existent capture group '${}'. Pattern has only {} capturing groups.",
-                            rule.name, group_num, group_count
-                        ));
+            for cap in capture_group_regex.captures_iter(&rule.replace_with) {
+                if let Some(group_num_str) = cap.get(1) {
+                    if let Ok(group_num) = group_num_str.as_str().parse::<usize>() {
+                        if group_num > group_count {
+                            errors.push(format!(
+                                "Rule '{}': replacement references non-existent capture group '${}'.",
+                                rule.name, group_num
+                            ));
+                        }
                     }
                 }
             }

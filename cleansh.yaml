@@ -1,0 +1,6 @@
+# cleansh.yaml
+rules: []
+
+engines:
+  entropy:
+    threshold: 0.5

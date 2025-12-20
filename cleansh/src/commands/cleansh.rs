@@ -1,24 +1,17 @@
 //! Cleansh command implementation for sanitizing terminal output.
-//!
-//! This module handles the main functionality of the `cleansh` CLI application,
-//! including reading input from various sources (stdin, files), applying redaction
-//! rules, and outputting the sanitized content to different destinations (stdout, files, clipboard).
-//! It orchestrates the flow of data through the redaction pipeline, leveraging
-//! the core logic from the `cleansh-core` crate.
 
 use anyhow::{Context, Result};
-use log::{debug, info, warn};
+// Removed unused 'warn' import
+use log::{debug, info};
 use std::io::{self, Write};
 use std::fs;
-use std::collections::HashMap;
+// Removed unused 'std::collections::HashMap' import
 
-// Import from cleansh_core
 use cleansh_core::{
-    engine::SanitizationEngine, // Import the SanitizationEngine trait
+    engine::SanitizationEngine,
     RedactionSummaryItem,
 };
 
-// Local imports
 use crate::ui::diff_viewer;
 use crate::ui::redaction_summary;
 use crate::ui::output_format;
@@ -26,7 +19,7 @@ use crate::ui::theme::{ThemeMap};
 use crate::utils::clipboard::copy_to_clipboard;
 use is_terminal::IsTerminal;
 
-/// Grouped options for the new ergonomic API
+/// Options for the ergonomic run_cleansh_opts API
 pub struct CleanshOptions {
     pub input: String,
     pub clipboard: bool,
@@ -54,76 +47,7 @@ pub fn warn_msg(msg: impl AsRef<str>, theme: &ThemeMap) {
     let _ = output_format::print_warn_message(&mut std::io::stderr(), msg.as_ref(), theme, stderr_supports_color);
 }
 
-/// Handles writing sanitized content to the primary output destination (stdout or file).
-fn handle_primary_output(
-    opts: &CleanshOptions,
-    sanitized_content: &str,
-    theme_map: &ThemeMap,
-) -> Result<()> {
-    if let Some(path) = opts.output_path.clone() {
-        info_msg(format!("Writing sanitized content to file: {}", path.display()), theme_map);
-        debug!("[cleansh::commands::cleansh] Outputting to file: {}", path.display());
-        let mut file = fs::File::create(&path)
-            .with_context(|| format!("Failed to create output file: {}", path.display()))?;
-        
-        if opts.diff {
-            debug!("Generating and displaying diff.");
-            diff_viewer::print_diff(&opts.input, sanitized_content, &mut file, theme_map, false)?;
-        } else {
-            writeln!(file, "{}", sanitized_content)
-                .context("Failed to write sanitized content")?;
-        }
-    } else {
-        info_msg("Writing sanitized content to stdout.", theme_map);
-        debug!("[cleansh::commands::cleansh] Outputting to stdout.");
-        let stdout = io::stdout();
-        let mut writer = stdout.lock();
-        let supports_color = stdout.is_terminal();
-        
-        if opts.diff {
-            debug!("Generating and displaying diff.");
-            diff_viewer::print_diff(&opts.input, sanitized_content, &mut writer, theme_map, supports_color)?;
-        } else {
-            writeln!(writer, "{}", sanitized_content)
-                .context("Failed to write sanitized content")?;
-        }
-    };
-    Ok(())
-}
-
-/// Handles copying sanitized content to the clipboard.
-fn handle_clipboard_output(sanitized_content: &str, theme_map: &ThemeMap) {
-    debug!("Attempting to copy sanitized content to clipboard.");
-    match copy_to_clipboard(sanitized_content) {
-        Ok(_) => {
-            info!("Sanitized content copied to clipboard successfully.");
-            info_msg("Sanitized content copied to clipboard successfully.", theme_map);
-        },
-        Err(e) => {
-            warn!("Failed to copy to clipboard: {}", e);
-            warn_msg(&format!("Failed to copy to clipboard: {}", e), theme_map);
-        }
-    }
-}
-
-/// Displays the redaction summary to stderr.
-fn handle_redaction_summary(
-    summary: &[RedactionSummaryItem],
-    opts: &CleanshOptions,
-    theme_map: &ThemeMap,
-) -> Result<()> {
-    if !opts.no_redaction_summary && !opts.quiet {
-        info!("Displaying redaction summary.");
-        let stderr_supports_color = io::stderr().is_terminal();
-        redaction_summary::print_summary(&summary, &mut io::stderr(), theme_map, stderr_supports_color)?;
-    } else {
-        info!("Redaction summary display skipped per user request.");
-    }
-    Ok(())
-}
-
-/// New, slim implementation entrypoint.
-/// Contains all the core logic for running the cleansh operation.
+/// The main operation runner for the CleanSH CLI.
 pub fn run_cleansh_opts(
     engine: &dyn SanitizationEngine,
     opts: CleanshOptions,
@@ -131,15 +55,17 @@ pub fn run_cleansh_opts(
 ) -> Result<()> {
     info!("Starting cleansh operation.");
 
+    // The core sanitization call. Note: metadata parameters are currently empty
+    // but ready for future telemetry/audit-log expansion.
     let (sanitized_content, summary) = engine.sanitize(
         &opts.input,
-        "",
-        "",
-        "",
-        "",
-        "",
-        "",
-        None,
+        "cli-input", // source_id
+        "cli-run",   // run_id
+        "",          // input_hash
+        "local-user",// user_id
+        "manual",    // reason
+        "success",   // outcome
+        None,        // audit_log
     )
     .context("Sanitization failed")?;
 
@@ -149,6 +75,7 @@ pub fn run_cleansh_opts(
         sanitized_content.len()
     );
     
+    // Output handling logic
     handle_primary_output(&opts, &sanitized_content, theme_map)?;
 
     if opts.clipboard {
@@ -161,70 +88,59 @@ pub fn run_cleansh_opts(
     Ok(())
 }
 
-/// Sanitizes a single line of input using the provided compiled rules, returning a map of matched rules.
-///
-/// This function is primarily used in line-buffered streaming mode. It takes a single
-/// line of text and applies the pre-compiled redaction rules to it, returning both
-/// the sanitized string and a map of rules and their match counts.
-///
-/// # Arguments
-///
-/// * `line` - The string slice representing a single line of input.
-/// * `engine` - A reference to the `SanitizationEngine` instance to use for redaction.
-///
-/// # Returns
-///
-/// A tuple containing the sanitized version of the input line and a `HashMap<String, usize>`
-/// of the redaction rule names and their match counts for that line.
-pub fn sanitize_single_line_with_count(
-    line: &str,
-    engine: &dyn SanitizationEngine,
-) -> (String, HashMap<String, usize>) {
-    let (sanitized_content, summary) = engine.sanitize(
-        line,
-        "",
-        "",
-        "",
-        "",
-        "",
-        "",
-        None,
-    )
-    .unwrap_or_else(|_| (line.to_string(), Vec::new()));
-    let mut counts: HashMap<String, usize> = HashMap::new();
-    for item in summary {
-        *counts.entry(item.rule_name).or_insert(0) += 1;
-    }
-    (sanitized_content, counts)
+fn handle_primary_output(
+    opts: &CleanshOptions,
+    sanitized_content: &str,
+    theme_map: &ThemeMap,
+) -> Result<()> {
+    if let Some(path) = opts.output_path.clone() {
+        info_msg(format!("Writing sanitized content to file: {}", path.display()), theme_map);
+        let mut file = fs::File::create(&path)
+            .with_context(|| format!("Failed to create output file: {}", path.display()))?;
+        
+        if opts.diff {
+            diff_viewer::print_diff(&opts.input, sanitized_content, &mut file, theme_map, false)?;
+        } else {
+            writeln!(file, "{}", sanitized_content)?;
+        }
+    } else {
+        let stdout = io::stdout();
+        let mut writer = stdout.lock();
+        let supports_color = stdout.is_terminal();
+        
+        if opts.diff {
+            diff_viewer::print_diff(&opts.input, sanitized_content, &mut writer, theme_map, supports_color)?;
+        } else {
+            writeln!(writer, "{}", sanitized_content)?;
+        }
+    };
+    Ok(())
 }
 
-/// Sanitizes a single line of input using the provided compiled rules.
-///
-/// This function is primarily used in line-buffered streaming mode. It takes a single
-/// line of text and applies the pre-compiled redaction rules to it.
-///
-/// # Arguments
-///
-/// * `line` - The string slice representing a single line of input.
-/// * `engine` - A reference to the `SanitizationEngine` instance to use for redaction.
-///
-/// # Returns
-///
-/// The sanitized version of the input line.
+fn handle_clipboard_output(sanitized_content: &str, theme_map: &ThemeMap) {
+    match copy_to_clipboard(sanitized_content) {
+        Ok(_) => info_msg("Sanitized content copied to clipboard successfully.", theme_map),
+        Err(e) => warn_msg(&format!("Failed to copy to clipboard: {}", e), theme_map),
+    }
+}
+
+fn handle_redaction_summary(
+    summary: &[RedactionSummaryItem],
+    opts: &CleanshOptions,
+    theme_map: &ThemeMap,
+) -> Result<()> {
+    if !opts.no_redaction_summary && !opts.quiet {
+        let stderr_supports_color = io::stderr().is_terminal();
+        redaction_summary::print_summary(summary, &mut io::stderr(), theme_map, stderr_supports_color)?;
+    }
+    Ok(())
+}
+
 pub fn sanitize_single_line(
     line: &str,
     engine: &dyn SanitizationEngine,
 ) -> String {
-    let (sanitized_content, _) = engine.sanitize(
-        line,
-        "",
-        "",
-        "",
-        "",
-        "",
-        "",
-        None,
-    )
-    .unwrap_or_else(|_| (line.to_string(), Vec::new()));
+    let (sanitized_content, _) = engine.sanitize(line, "", "", "", "", "", "", None)
+        .unwrap_or_else(|_| (line.to_string(), Vec::new()));
     sanitized_content
 }
