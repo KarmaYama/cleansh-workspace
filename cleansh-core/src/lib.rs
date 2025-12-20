@@ -1,3 +1,4 @@
+// cleansh-core/src/lib.rs
 //! # CleanSH Core Library
 //!
 //! `cleansh-core` provides the fundamental, platform-independent logic for data sanitization
@@ -55,7 +56,7 @@
 //! ## Usage Example
 //!
 //! ```rust
-//! use cleansh_core::{RedactionConfig, headless_sanitize_string, EngineOptions};
+//! use cleansh_core::{RedactionConfig, headless_sanitize_string, EngineOptions, HeadlessEngineType};
 //! use anyhow::Result;
 //!
 //! fn main() -> Result<()> {
@@ -71,11 +72,13 @@
 //!     let source_id = "test_document.txt";
 //!
 //!     // 4. Sanitize the content in a single, headless function call.
+//!     // We specify HeadlessEngineType::Regex to use the standard regex-based engine.
 //!     let sanitized_output = headless_sanitize_string(
 //!         default_config,
 //!         options,
 //!         input,
 //!         source_id,
+//!         HeadlessEngineType::Regex, 
 //!     )?;
 //!     println!("\nSanitized Output:\n{}", sanitized_output);
 //!
@@ -161,7 +164,7 @@ pub use profiles::{
 pub use audit_log::AuditLog;
 
 /// Re-exports types and functions for one-shot, non-interactive use.
-pub use headless::headless_sanitize_string;
+pub use headless::{headless_sanitize_string, HeadlessEngineType};
 
 // Re-export key types from the sanitizers::compiler module for advanced usage.
 // This is the correct path for `CompiledRule` and `CompiledRules`.
