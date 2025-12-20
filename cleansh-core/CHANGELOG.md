@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.1.3] - 2025-12-19 — Entropy Engine Integration & Open Source Transition
+
+This release integrates the new **Dynamic Contextual Entropy Engine**, enabling `cleansh-core` to detect unstructured secrets based on statistical randomness. It also marks the transition of the core library to a fully Open Source license model.
+
+### Added
+
+* **Entropy Engine Integration:** Added `cleansh-entropy` as a dependency.
+* **`EntropyEngine` Struct:** A new `SanitizationEngine` implementation that adapts the low-level math from `cleansh-entropy` to the high-level sanitization trait.
+* **New Engine Module:** Added `engines/entropy_engine.rs` to house the new logic.
+
+### Changed
+
+* **Re-Licensing:** The crate is now dual-licensed under **MIT OR Apache-2.0**. The PolyForm Noncommercial license has been retired.
+* **Engine Trait Updates:** Minor adjustments to `SanitizationEngine` to support probabilistic matching (confidence scores).
+
+---
+
 ## [0.1.2] - 2025-08-08 — Core Engine Refactoring, Engine Abstraction & Improved Rule Management
 
 This release introduces a major architectural refactoring of the core sanitization engine. It abstracts the redaction logic behind a trait, enabling multiple backends and improving the application's extensibility. The update also streamlines CLI flags and centralizes key logic into dedicated helper functions, making the codebase more modular, maintainable, and robust. This version also refactors the programmatic validators for Social Security Numbers and UK National Insurance Numbers for improved clarity and accuracy.
