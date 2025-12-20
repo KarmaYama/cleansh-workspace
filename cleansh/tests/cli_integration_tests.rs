@@ -1,4 +1,4 @@
-// tests/cli_integration_tests.rs
+// cleansh/tests/cli_integration_tests.rs
 //! This file contains command-line interface (CLI) integration tests for the `cleansh` application.
 //!
 //! These tests focus on verifying the `cleansh` executable's behavior when invoked from the command line,
@@ -107,7 +107,8 @@ fn test_basic_sanitization() -> Result<()> {
     // to match the behavior of `println!` which adds a newline by default.
     let expected_stdout = "My email is [EMAIL_REDACTED] and my IP is [IPV4_REDACTED].\n";
     let expected_stderr_contains_substrings = vec![
-        "[INFO cleansh] cleansh started. Version: 0.1.8".to_string(),
+        // FIX: Updated version to 0.1.9
+        "[INFO cleansh] cleansh started. Version: 0.1.9".to_string(),
         "[DEBUG cleansh_core::config] Loading default rules from embedded string...".to_string(),
         // FIX: The log message has been updated to be more specific.
         "[DEBUG cleansh_core::sanitizers::compiler] Rule 'email' compiled successfully.".to_string(),
@@ -236,8 +237,9 @@ fn test_run_cleansh_clipboard_copy_to_file() -> Result<()> {
     // Assertions for the presence of key log messages.
     // The log for writing to the file has changed. It's no longer an INFO message
     // that includes the file path directly. Instead, there's a DEBUG log.
+    // FIX: Updated version to 0.1.9
     assert!(
-        stderr.contains("[INFO cleansh] cleansh started. Version: 0.1.8"),
+        stderr.contains("[INFO cleansh] cleansh started. Version: 0.1.9"),
         "Stderr missing `cleansh started` log.\nFull stderr:\n{}", stderr
     );
     assert!(

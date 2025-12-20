@@ -1,7 +1,10 @@
 // cleansh/src/commands/uninstall.rs
 //! Cleansh Uninstallation Command (`uninstall`).
 //!
-//! This module implements the `cleansh uninstall` command.
+//! This module implements the `cleansh uninstall` command, providing a mechanism
+//! for the self-deletion of the Cleansh application and the removal of its
+//! associated user data (such as configuration and application state files).
+//! It includes user confirmation and platform-specific logic to ensure proper cleanup.
 
 use anyhow::{Context, Result, anyhow};
 use std::path::PathBuf;
@@ -70,11 +73,14 @@ fn is_elevated() -> bool {
     }
 }
 
+/// The main entry point for the uninstall command.
+/// It verifies user intent, determines paths, and then hands off control
+/// to a platform-specific deletion script.
 pub fn elevate_and_run_uninstall(yes_flag: bool, theme_map: &ThemeMap) -> Result<()> {
     info!("Starting cleansh uninstall operation.");
     let stderr_supports_color = io::stderr().is_terminal();
 
-    // --- 1. User Confirmation ---
+    // --- 1. User Confirmation (if not running with --yes) ---
     if !yes_flag {
         info_msg("WARNING: This will uninstall Cleansh and remove its associated data.", theme_map);
         output_format::print_message(
@@ -100,7 +106,7 @@ pub fn elevate_and_run_uninstall(yes_flag: bool, theme_map: &ThemeMap) -> Result
     let current_exe_path = env::current_exe()
         .context("Failed to determine current executable path.")?;
     
-    // Resolve app state path
+    // Resolve app state path (logic consistent with main.rs)
     let app_state_path = std::env::var("CLEANSH_STATE_FILE_OVERRIDE_FOR_TESTS")
         .map(PathBuf::from)
         .unwrap_or_else(|_| {
@@ -127,17 +133,20 @@ pub fn elevate_and_run_uninstall(yes_flag: bool, theme_map: &ThemeMap) -> Result
     Ok(())
 }
 
+/// Windows-specific uninstall logic.
+/// Generates a PowerShell script to handle deletion after the main process exits.
 #[cfg(target_os = "windows")]
 fn uninstall_windows(exe_path: PathBuf, state_file: PathBuf, state_dir: PathBuf, theme_map: &ThemeMap) -> Result<()> {
-    // 1. Generate Temp Script Path
+    // 1. Generate Temp Script Path using GetTempPathW for correctness
     let mut temp_path_buf = vec![0u16; 260];
     let temp_path_len = unsafe { GetTempPathW(temp_path_buf.len() as u32, temp_path_buf.as_mut_ptr()) };
     
-    // We now have OsStringExt in scope, so this works:
+    // Convert wide string to OsString, then PathBuf
     let temp_dir = PathBuf::from(OsString::from_wide(&temp_path_buf[0..temp_path_len as usize]));
     let script_path = temp_dir.join(format!("cleansh_nuke_{}.ps1", std::process::id()));
 
     // 2. Generate PowerShell Script Content
+    // The script waits for the PID to exit, retries deletion, and cleans up state.
     let current_pid = std::process::id();
     let script_content = format!(
         r#"
@@ -207,9 +216,9 @@ Remove-Item -Path $MyInvocation.MyCommand.Path -Force
     // 4. Execute Script
     let script_path_str = script_path.to_string_lossy().to_string();
     
+    // If we are admin, spawn directly. If not, ShellExecute 'runas'.
     if is_elevated() {
         info_msg("Running cleanup script...", theme_map);
-        // We do not need Stdio::null here because we want to see the PS window
         Command::new("powershell.exe")
             .args(&["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", &script_path_str])
             .spawn()
@@ -238,9 +247,12 @@ Remove-Item -Path $MyInvocation.MyCommand.Path -Force
     }
 
     // 5. Exit Immediately
+    // We must exit so the script can delete our binary.
     std::process::exit(0);
 }
 
+/// Unix-specific uninstall logic.
+/// Spawns a background shell process to handle deletion.
 #[cfg(not(target_os = "windows"))]
 fn uninstall_unix(exe_path: PathBuf, state_file: PathBuf, state_dir: PathBuf, theme_map: &ThemeMap) -> Result<()> {
     let bash_script = format!(
