@@ -1,4 +1,3 @@
-// cleansh-entropy/src/statistics/mod.rs
 use libm::sqrt;
 
 /// Statistics for a set of entropy values used to determine baseline randomness.
@@ -43,6 +42,10 @@ pub fn compute_stats(values: &[f64]) -> EntropyStats {
 #[cfg(test)]
 mod tests {
     use super::*;
+    // FIX: Explicitly import vec macro from alloc for no_std tests
+    extern crate alloc;
+    use alloc::vec;
+
     // Using a small epsilon for floating point comparisons in tests
     const EPSILON: f64 = 1e-10;
 
@@ -72,7 +75,7 @@ mod tests {
         // Values: 2, 4, 4, 4, 5, 5, 7, 9
         // Mean: 5.0
         // Variance: (9+1+1+1+0+0+4+16)/8 = 32/8 = 4.0
-        // Std Dev: 2.0u
+        // Std Dev: 2.0
         let values = vec![2.0, 4.0, 4.0, 4.0, 5.0, 5.0, 7.0, 9.0];
         let stats = compute_stats(&values);
         
