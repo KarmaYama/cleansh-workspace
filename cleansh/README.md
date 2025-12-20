@@ -6,7 +6,7 @@
 
 > CleanSH (clean shell) is a high‑trust, single‑purpose CLI tool designed to sanitize terminal output for safe sharing.
 > It prioritizes security by default, requires zero configuration to get started, and offers extendability when needed.
-> The project is in active development, with **`v0.1.8`** bringing significant enhancements to redaction accuracy, security, and user control.
+> The project is in active development, with **`v0.1.9/10`** bringing significant enhancements to redaction accuracy, security, and user control.
 > We value your feedback. Please report any issues you encounter. Star the repository if you like it!
 
 ---
@@ -48,7 +48,7 @@ The restrictive "PolyForm" license has been retired for all versions v0.1.9+.
 
 ## 3. Core Capabilities
 
-Based on our rigorously passing test suite, `Cleansh` accurately masks:
+Based on our rigorously passing test suite, `CleanSH` accurately masks:
 
 ### 3.1. Enhanced Redaction Categories:
 
@@ -73,18 +73,38 @@ Based on our rigorously passing test suite, `Cleansh` accurately masks:
 
 ## 4. The New Entropy Engine
 
-**New in v0.1.9:** `CleanSH` now includes a **Dynamic Contextual Entropy Engine**.
+**New in v0.1.9:** `CleanSH` now includes a context-aware **Entropy Engine** alongside its Regex core.
 
-Unlike regex, which looks for *patterns* (like `sk_live_`), the Entropy Engine looks for *characteristics*—specifically, **randomness**. It solves the "False Positive Paradox" by calculating a local statistical baseline for your file and only flagging tokens that are statistical outliers (Z-score spikes).
+Standard regex rules require you to know the *format* of a secret (e.g., "starts with `sk_live_`"). But what about a random 32-character database password or a custom API key? If you don't have a regex for it, standard tools will miss it.
 
-**Enable it:**
+The Entropy Engine solves this by detecting **statistical anomalies**—tokens that are mathematically too random to be natural language or code.
+
+### 4.1. The "False Positive" Problem (And How We Solved It)
+
+Most entropy scanners fail because of the **Self-Reference Paradox**: when they calculate the "average randomness" of a text block to see if a token is an outlier, they include the token itself in that average. A high-entropy secret inflates the baseline, effectively hiding itself.
+
+**The CleanSH Solution: "Leave-One-Out" Baseline**
+Our engine uses a rigorous statistical approach:
+1.  **Isolation:** When analyzing a candidate token (e.g., `8x9#bF2!kL`), we calculate the baseline entropy of the surrounding context *while mathematically excluding the token itself*.
+2.  **Z-Score Analysis:** We calculate a Z-score (standard deviation from the mean). If the token is significantly more random than its isolated background, it is flagged.
+3.  **Context Boosting:** We scan the preceding bytes for "danger words" (like `key`, `auth`, `secret`) using an Aho-Corasick automaton. A match here lowers the statistical threshold required to flag the secret.
+
+### 4.2. Enabling the Engine
+
+The Entropy Engine is opt-in because it is computationally more intensive than regex.
+
+**To enable it for a single run:**
 ```bash
-cleansh sanitize --engine entropy
+# Scan with BOTH Regex and Entropy engines
+cat production.log | cleansh sanitize --engine entropy
 
 ```
 
-**Why use it?**
-It catches the "unknown unknowns"—custom API keys, internal auth tokens, and random passwords—that standard regex rules will always miss.
+**When to use it:**
+
+* Scanning legacy codebases for hardcoded passwords.
+* Auditing logs where the format of secrets is unknown.
+* Sanitizing messy data dumps containing mixed binary/text content.
 
 ---
 
