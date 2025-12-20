@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.1.5] - 2025-12-20 — Dynamic Entropy Configuration
+
+### Added
+* **Configurable Entropy Threshold:** Implemented `EntropyConfig` and `EngineConfig` structs within `RedactionConfig`. This allows users to fine-tune the confidence `threshold` for the entropy engine directly via their configuration file (e.g., `cleansh.toml`).
+* **Integration Tests:** Added `tests/entropy_config_test.rs` to verify that the dynamic threshold is respected and effectively controls detection sensitivity (e.g., setting it to `0.5` vs `5.0`).
+
+### Fixed
+* **Impossible Threshold Bug:** Fixed a critical logic error where the `EntropyEngine` was initialized with a hardcoded confidence threshold of `4.0`. Since the maximum possible score from the scoring algorithm is `3.0` (1.0 entropy + 2.0 context), this effectively disabled all secret detection. The default is now safely set to `0.5` and is fully configurable.
+
+---
+
 ## [0.1.4] - 2025-12-20 — Security Fix
 
 ### Security
