@@ -1,5 +1,4 @@
 # cleansh/Cargo.toml
-# cleansh/Cargo.toml
 [package]
 name = "cleansh"
 version = "0.2.0"
@@ -62,6 +61,7 @@ serde_with = "3.14.0"
 ratatui = "0.29.0"
 crossterm = { version = "0.28", features = ["event-stream"] }
 tokio = { version = "1.48.0", features = ["full"] }
+portable-pty = "0.8"
 
 # STRICTLY PIN RANDOMNESS
 rand = "=0.8.5"

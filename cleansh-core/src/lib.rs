@@ -32,7 +32,7 @@
 //! ## Usage Example (Proactive Healing)
 //!
 //! ```rust
-//! use cleansh_core::{RedactionConfig, EntropyEngine, HeadlessEngineType};
+//! use cleansh_core::{RedactionConfig, EntropyEngine, HeadlessEngineType, SanitizationEngine}; // <--- Fixed: Added SanitizationEngine trait import
 //! use cleansh_core::remediation::orchestrator::SelfHealingEngine;
 //! use tokio::sync::mpsc;
 //! use std::sync::Arc;
@@ -44,6 +44,8 @@
 //!
 //!     // 1. Setup the Remediation Channel
 //!     let (tx, rx) = mpsc::channel(100);
+//!     
+//!     // This method requires the SanitizationEngine trait to be in scope
 //!     engine.set_remediation_tx(tx);
 //!
 //!     // 2. Initialize the Self-Healing Orchestrator
@@ -110,6 +112,7 @@ pub use sanitizers::compiler::{compile_rules, CompiledRule, CompiledRules};
 // Remediation re-exports for easy access
 pub use remediation::{
     Remediator, 
+    Remediator as RemediatorTrait, // Alias if needed for clarity
     RemediationOutcome, 
     ConfidenceLevel,
     orchestrator::SelfHealingEngine
