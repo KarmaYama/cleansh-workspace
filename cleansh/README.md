@@ -1,11 +1,12 @@
-# CleanSH – Sanitize Your Terminal Output, Securely.
+# CleanSH – The Terminal Security HUD
 
-**[Contributing Guidelines](https://www.google.com/search?q=CONTRIBUTING.md)** | **[Code of Conduct](https://www.google.com/search?q=CODE_OF_CONDUCT.md)** | **[Changelog](CHANGELOG.md)** | **[Security Policy](SECURITY.md)** | **[Trademark Policy](https://www.google.com/search?q=TRADEMARK.md)** | **[Command Handbook](https://www.google.com/search?q=COMMANDS.md)**
+**[Contributing Guidelines](https://www.google.com/search?q=CONTRIBUTING.md)** | **[Code of Conduct](https://www.google.com/search?q=CODE_OF_CONDUCT.md)** | **[Changelog](CHANGELOG.md)** | **[Security Policy](SECURITY.md)** | **[Command Handbook](https://www.google.com/search?q=COMMANDS.md)**
 
-> CleanSH (clean shell) is a high‑trust, single‑purpose CLI tool designed to sanitize terminal output for safe sharing.
-> It prioritizes security by default, requires zero configuration to get started, and offers extendability when needed.
-> The project is in active development, with **`v0.1.12`** bringing major advancements in surgical redaction precision and statistical explainability.
-> We value your feedback. Please report any issues you encounter. Star the repository if you like it!
+> **CleanSH** (clean shell) is a **Terminal Heads-Up Display (HUD)** that secures your command output in real-time.
+> Instead of just filtering text, it takes over your terminal window to provide a live cockpit: visualizing entropy, detecting secrets, and letting you approve or block sensitive data on the fly.
+> **v0.2.0 Update:** Now features a full TUI dashboard, "Heat-Seeker" surgical extraction, and zero-latency streaming.
+
+*(Replace this with a real screenshot of your new TUI!)*
 
 ---
 
@@ -14,33 +15,47 @@
 | Section |
 | --- |
 | [1. Overview](https://www.google.com/search?q=%231-overview) |
-| [2. License (Open Core)](https://www.google.com/search?q=%232-license-open-core) |
+| [2. The TUI Workflow](https://www.google.com/search?q=%232-the-tui-workflow) |
 | [3. Core Capabilities](https://www.google.com/search?q=%233-core-capabilities) |
-| [4. The Entropy Engine & Explainability](https://www.google.com/search?q=%234-the-entropy-engine--explainability) |
-| [5. Usage Examples](https://www.google.com/search?q=%235-usage-examples) |
-| [6. Configuration Strategy](https://www.google.com/search?q=%236-configuration-strategy) |
-| [7. Future Vision](https://www.google.com/search?q=%237-future-vision) |
-| [8. Installation](https://www.google.com/search?q=%238-installation) |
+| [4. The Heat-Seeker Engine](https://www.google.com/search?q=%234-the-heat-seeker-engine) |
+| [5. Installation](https://www.google.com/search?q=%235-installation) |
+| [6. Usage Examples](https://www.google.com/search?q=%236-usage-examples) |
+| [7. Configuration](https://www.google.com/search?q=%237-configuration) |
+| [8. License](https://www.google.com/search?q=%238-license) |
 
 ---
 
 ## 1. Overview
 
-`CleanSH` is a powerful and reliable command‑line utility designed to help you quickly and securely redact sensitive information from your terminal output.
-Whether you're debugging, collaborating, or sharing logs, `CleanSH` ensures that confidential data like IP addresses, email addresses, and access tokens never leave your local environment unmasked. Piped directly from `stdin` or loaded from files, `CleanSH` provides a robust, pre‑configured solution for data sanitization, with flexible options for custom rules and output formats.
+Most security tools scan code *before* you commit it. **CleanSH protects you while you work.**
+
+It sits in the pipe (`|`) between your command and your screen. Whether you are tailing production logs, running a Python script, or checking Docker containers, CleanSH intercepts the stream, identifies sensitive data (PII, API Keys, Secrets), and surgically redacts it before it hits your monitor.
 
 **Sanitize your terminal output. One tool. One purpose.**
 
 ---
 
-## 2. License (Open Core)
+## 2. The TUI Workflow
 
-**CleanSH is now Open Source.**
+In **v0.2.0**, CleanSH is no longer a passive filter. It is an interactive workspace.
 
-* **CLI & Core Library:** Licensed under **MIT OR Apache-2.0**. You are free to use, modify, and distribute the CLI tool for any purpose, including commercial use.
-* **SaaS Integration (Future):** Advanced team features like centralized profile synchronization (`cleansh profiles sync`) will be part of the Relay Enterprise platform but are currently inactive stubs in the open-source CLI.
+### The Dashboard Panels
 
-The restrictive "PolyForm" license has been retired for all versions v0.1.9+.
+1. **📡 Live Stream:** The main view showing your logs (sanitized in real-time).
+2. **🔥 Entropy Matrix:** A visual heatmap showing the statistical "danger level" of every character.
+3. **🛡️ Remediation Log:** A history of every secret caught, allowing for audit and review.
+
+### Interactive Controls
+
+You control the security engine with your keyboard while the logs flow:
+
+| Key | Action | Description |
+| --- | --- | --- |
+| **`[E]`** | **Switch Engine** | Swap between Regex, Entropy, or Hybrid engines instantly. |
+| **`[H]`** | **Heatmap** | Toggle the visual entropy view to see *why* something was flagged. |
+| **`[D]`** | **Diff View** | See a side-by-side comparison (Original vs. Redacted). |
+| **`[A]`** | **Approve** | Whitelist a false positive for the current session. |
+| **`[I]`** | **Ignore** | Dismiss a dashboard alert. |
 
 ---
 
@@ -48,168 +63,41 @@ The restrictive "PolyForm" license has been retired for all versions v0.1.9+.
 
 Based on our rigorously passing test suite, `CleanSH` accurately masks:
 
-### 3.1. Enhanced Redaction Categories:
+* **Secrets:** GitHub PATs, AWS/GCP/Azure Keys, Stripe Keys, Slack Tokens.
+* **PII:** Email addresses, IPv4/IPv6, Credit Cards, SSN/NINO.
+* **System Info:** Absolute paths (normalized to `~/`), MAC addresses.
 
-* **Emails:** Common email formats (e.g., `user@example.com`).
-* **IP Addresses:** IPv4 and IPv6.
-* **Tokens & Secrets:**
-* **JWTs**
-* **GitHub PATs** (`ghp_…`, `github_pat_…`)
-* **Stripe keys** (`sk_live_…`)
-* **Cloud Keys:** AWS, GCP, Azure.
-* **SSH keys & Generic Hex/Tokens.**
+### Engines
 
-
-* **PII:** Credit Cards, SSN (US), NINO (UK), South African IDs.
-* **Paths:** OS-agnostic path redaction (`/home/user` -> `~/`).
-
-### 3.2. Primary Commands:
-
-* **`cleansh sanitize`:** The core redaction loop.
-* **`cleansh scan`:** Audit files for secrets without modifying them (Exit code support for CI/CD).
-* **`cleansh profiles`:** Manage local rule configurations.
+* **Regex Engine:** Fast, deterministic blocking of known patterns (e.g., Email, IP).
+* **Entropy Engine:** Statistical analysis to find *unknown* high-randomness secrets.
 
 ---
 
-## 4. The Entropy Engine & Explainability
+## 4. The Heat-Seeker Engine
 
-**v0.1.12 Evolution:** `CleanSH` features a context-aware **Entropy Engine** that moves beyond simple sliding windows to provide surgical precision.
+**v0.2.0 Evolution:** The new **Surgical Entropy Engine** moves beyond simple window masking.
 
-Standard regex rules require you to know the *format* of a secret. The Entropy Engine solves this by detecting **statistical anomalies**—tokens that are mathematically too random to be natural language or code.
+Standard entropy scanners are "blunt instruments"—they often redact the English words surrounding a secret. CleanSH uses a **Statistical Decay Walk** to fix this:
 
-### 4.1. Surgical Precision: The "Heat-Seeker" Algorithm
+1. **Detection:** Identifies a high-entropy anomaly (Z-Score > Threshold).
+2. **Semantic Anchoring:** Locks onto delimiters like `key=` or `"` to protect labels.
+3. **Surgical Extraction:** "Walks" backwards from the peak heat to find the exact start/end of the randomness, preserving suffixes like `_padding` or `.json`.
 
-Most entropy scanners over-redact because they mask the entire fixed-size window. CleanSH solves "Locator Bleed" via:
-
-1. **Semantic Boundary Anchoring:** Detection snaps to common delimiters (like `:` or `=`), protecting labels like `auth_key=`.
-2. **Statistical Decay Walk:** The engine performs a character-by-character "walk" backward from the detection site, identifying exactly where randomness ends and English begins.
-3. **Lowercase Run Heuristic:** Automatically recognizes and preserves predictable natural language suffixes like `_extra_padding`.
-
-### 4.2. Explainability: Statistical Heatmaps
-
-CleanSH solves the "Signal-to-Noise" crisis by providing transparency. Users can visualize the randomness intensity to understand *why* a redaction occurred.
-
-* **Critical Heat:** Bright Red indicates high-entropy secret cores.
-* **Predictable Baseline:** Dimmed text indicates safe natural language.
-
-### 4.3. Enabling the Engine
-
-**To enable redaction for a single run:**
-
-```bash
-cat production.log | cleansh sanitize --engine entropy
-
-```
-
-**To visualize the entropy heatmap (Explainability Mode):**
-
-```bash
-echo "8x9#bF2!kL0Z@mN9" | cleansh sanitize --engine entropy --heatmap
-
-```
+**The Result:** `key=Af9!xK3#mP5_suffix` becomes `key=[ENTROPY_REDACTED]_suffix`.
 
 ---
 
-## 5. Usage Examples
+## 5. Installation
 
-**Basic Sanitization:**
+### From crates.io (Recommended)
 
-```bash
-echo "My email is test@example.com" | cleansh sanitize
-
-```
-
-**Surgical Entropy Redaction:**
-
-```bash
-cat unknown_logs.txt | cleansh sanitize --engine entropy
-
-```
-
-**CI/CD Scan (Fail if secrets found):**
-
-```bash
-cat build.log | cleansh scan --fail-over-threshold 0
-
-```
-
-**Docker Logs:**
-
-```bash
-docker logs my-container | cleansh sanitize
-
-```
-
-**Clipboard Copy:**
-
-```bash
-git config --list | cleansh sanitize -c
-
-```
-
-**Diff View:**
-
-```bash
-cat error.log | cleansh sanitize -d
-
-```
-
----
-
-## 6. Configuration Strategy
-
-### Custom Rules (`--config`)
-
-Define your own regex rules in a YAML file:
-
-```yaml
-rules:
-  - name: emp_id
-    pattern: 'EMP-\d{5}'
-    replace_with: '[EMPLOYEE_ID]'
-    pattern_type: "regex"
-    opt_in: false
-
-```
-
-### Entropy Tuning
-
-Fine-tune sensitivity directly in your configuration:
-
-```yaml
-engines:
-  entropy:
-    threshold: 0.3
-    window_size: 16
-
-```
-
----
-
-## 7. Future Vision
-
-CleanSH is evolving into an intelligent security assistant.
-
-* **WASM Core:** Running directly in the browser for zero-install sanitization.
-* **Tauri GUI:** A native desktop app for non-CLI workflows.
-* **Deep-Packet-Inspection:** Future modular backends using the plug-and-play engine pattern.
-
----
-
-## 8. Installation
-
-### Prebuilt Binaries (Recommended):
-
-Download from [GitHub Releases](https://github.com/KarmaYama/cleansh-workspace/releases).
-
-### From crates.io:
-
-```bash
+```powershell
 cargo install cleansh
 
 ```
 
-### From Source:
+### From Source
 
 ```bash
 git clone https://github.com/KarmaYama/cleansh-workspace.git
@@ -217,6 +105,79 @@ cd cleansh
 cargo build --release
 
 ```
+
+---
+
+## 6. Usage Examples
+
+**The "Pipe" Pattern:**
+Just add `| cleansh` to the end of any command.
+
+**Live Log Monitoring:**
+
+```bash
+tail -f /var/log/syslog | cleansh
+
+```
+
+**Docker Containers:**
+
+```bash
+docker logs -f my-app | cleansh
+
+```
+
+**Python Scripts:**
+
+```bash
+python server.py | cleansh
+
+```
+
+> **🪟 Windows Users Note:**
+> PowerShell's pipe operator buffers output, causing delays. For instant streaming, use **Command Prompt (`cmd`)** or wrap the command:
+> `cmd /c "python app.py | cleansh"`
+
+---
+
+## 7. Configuration
+
+CleanSH works out-of-the-box, but you can tune it via `config.yaml`.
+
+**Location:**
+
+* **Linux/Mac:** `~/.config/cleansh/config.yaml`
+* **Windows:** `%APPDATA%\cleansh\config.yaml`
+
+**Example:**
+
+```yaml
+engines:
+  entropy:
+    threshold: 0.6  # Sensitivity (0.1 = Paranoid, 1.0 = Relaxed)
+
+rules:
+  - name: "internal_project_id"
+    pattern: 'PROJ-[0-9]{5}'
+    replace_with: '[PROJECT_ID]'
+
+```
+
+Load a custom config at runtime:
+
+```bash
+python app.py | cleansh --profile strict
+
+```
+
+---
+
+## 8. License
+
+**CleanSH is Open Source.**
+
+* **Core Code:** Licensed under **MIT OR Apache-2.0**.
+* **Restrictions:** The restrictive "PolyForm" license has been retired. You are free to use this tool commercially.
 
 ---
 

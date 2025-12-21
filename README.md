@@ -1,84 +1,66 @@
-# CleanSH Workspace – A Monorepo for Secure Terminal Output Sanitization
+# CleanSH Workspace – The Secure Terminal Monorepo
 
-**Stop relying on leaky regex. CleanSH (Clean Shell) is a high-trust, modular Rust utility designed to securely and programmatically sanitize sensitive data from your terminal output, logs, and text.**
+**[Contributing](https://www.google.com/search?q=CONTRIBUTING.md)** | **[Code of Conduct](https://www.google.com/search?q=CODE_OF_CONDUCT.md)** | **[Security Policy](SECURITY.md)**
+
+> **CleanSH** (Clean Shell) is a high-trust, modular Rust ecosystem designed to securely sanitize sensitive data from terminal output, logs, and text streams.
+> **v0.2.0 Update:** The CLI has evolved into a real-time **Terminal HUD (Heads-Up Display)** with surgical entropy detection.
 
 ---
 
 ## Overview
 
-This repository (`cleansh-workspace`) is a **Rust monorepo** designed for the secure sanitization of terminal output. It houses a growing ecosystem of tools and libraries under a unified development environment, promoting modularity, reusability, and maintainability.
-
----
+This repository is a **Rust Monorepo** managing the ecosystem of tools and libraries that power CleanSH. It promotes modularity, type safety, and zero-copy performance across the stack.
 
 ### Key Components
 
-1. **`CleanSH` (CLI Application):**
-* **Location:** [`/cleansh`](https://www.google.com/search?q=./cleansh/README.md)
-* 
-**Purpose:** The main user-facing command-line utility. It orchestrates scanning engines, manages configuration profiles, and handles I/O streams for real-time redaction.
-
-
-
-
-2. **`CleanSH-core` (Core Library):**
-* **Location:** [`/cleansh-core`](https://www.google.com/search?q=./cleansh-core/README.md)
-* 
-**Purpose:** A standalone library encapsulating business logic for redaction, rule compilation, and validation. It defines the `SanitizationEngine` trait that powers the multi-engine pipeline.
-
-
-
-
-3. **`CleanSH-entropy` (Math Engine):**
-* **Location:** [`/cleansh-entropy`](https://www.google.com/search?q=./cleansh-entropy/README.md)
-* 
-**Purpose:** A `no_std`, zero-copy engine focused on detecting high-randomness secrets that regex misses.
-
-
-
-
+| Crate | Location | Description |
+| --- | --- | --- |
+| **`cleansh`** | [`/cleansh`](https://www.google.com/search?q=./cleansh/README.md) | **The CLI Application.** Now a full TUI dashboard built on `ratatui`. It orchestrates the real-time scanning pipeline, renders the "Cockpit" UI, and handles user interaction (Approvals/Ignores). |
+| **`cleansh-core`** | [`/cleansh-core`](https://www.google.com/search?q=./cleansh-core/README.md) | **The Business Logic.** Defines the `SanitizationEngine` trait, manages configuration profiles (`config.yaml`), and handles the "Surgical Extraction" logic. |
+| **`cleansh-entropy`** | [`/cleansh-entropy`](https://www.google.com/search?q=./cleansh-entropy/README.md) | **The Math Engine.** A `no_std`, zero-copy library implementing Shannon entropy calculation, Z-Score anomaly detection, and statistical decay walks. |
 
 ---
 
-## Technical Principles: Beyond Fixed Thresholds
+## Technical Principles: The "Surgical" Approach
 
-CleanSH solves the "signal-to-noise ratio crisis" common in traditional secret scanners. Most tools use fixed entropy thresholds that trigger on non-sensitive data like long UUIDs or hashes, leading to alert fatigue.
+CleanSH v0.2.0 solves the "Locator Bleed" problem common in regex-based scanners. Most tools are blunt instruments—they redact entire lines or fixed windows, destroying context. CleanSH uses a **Surgical Pipeline**:
 
-### 1. Dynamic Z-Score Thresholding
+### 1. Dynamic Z-Score Detection
 
-Instead of a static value, CleanSH calculates a **local entropy baseline** for your specific context. A token is only flagged if its Shannon entropy is a statistically significant number of **standard deviations** above the baseline mean.
+Instead of a static threshold (which causes false positives), CleanSH calculates a **local entropy baseline**. A token is only flagged if its Shannon entropy deviates significantly (standard deviations) from the surrounding text.
 
-* 
-**Result:** We ignore high-entropy non-secrets (like UUIDs in a log full of UUIDs) while catching true secrets in low-randomness contexts.
+### 2. Statistical Decay Walk (Surgical Extraction)
 
+Once a high-entropy "peak" is found, the engine performs a **decay walk** outwards character-by-character. It identifies exactly where the randomness "cools down" into natural language.
 
+* **Result:** It preserves suffixes like `_padding`, `.json`, or `";`, ensuring JSON structures and variable assignments remain valid code even after redaction.
 
-### 2. Semantic Sliding Window
+### 3. Semantic Boundary Anchoring
 
-Traditional tokenizers are fragile; they often "shred" secrets containing symbols like `#`, `!`, or `@`. CleanSH uses a **Sliding Window** scanner that glides byte-by-byte across text streams to locate randomness regardless of delimiters.
-
-### 3. Heuristic Extraction (Heat-Seeker)
-
-Locating "heat" is only half the battle. CleanSH employs a surgical extraction pass that anchors to common semantic delimiters (like `:` or `=`) to "shrink-wrap" the redaction around the actual payload.
-
-* **Before:** `auth_key=[ENTROPY_REDACTED]ing`
-* **After:** `auth_key=[ENTROPY_REDACTED]_extra_padding`
+The engine respects semantic delimiters (`=`, `:`, `"`, `'`). It "snaps" the redaction start point to these anchors, ensuring that labels (e.g., `api_key=`) are never swallowed by the redaction mask.
 
 ---
 
-### License (Open Source)
+## License (Open Source)
 
-As of version **v0.1.9**, the `cleansh` workspace has transitioned to a fully Open Source model.
+The entire workspace is **Open Source**.
 
-* **License:** All components (`cleansh`, `core`, and `entropy`) are dual-licensed under **MIT** or **Apache-2.0**.
-* **Commercial Use:** You are free to use, modify, and distribute these tools for any purpose, including commercial applications, without restriction.
+* **License:** Dual-licensed under **MIT** or **Apache-2.0**.
+* **Commercial Use:** You are free to use, modify, and distribute these tools for any purpose, including commercial applications.
 
-*The previous "PolyForm Noncommercial" license has been retired.*
+*Note: The restrictive "PolyForm" license used in early versions has been retired.*
 
 ---
 
-### Getting Started
+## Getting Started
 
-1. **Clone the Repository:**
+### Prerequisites
+
+* Rust 1.70+ (Stable)
+
+### Build from Source
+
+1. **Clone the Monorepo:**
 ```bash
 git clone https://github.com/KarmaYama/cleansh-workspace.git
 cd cleansh-workspace
@@ -86,30 +68,40 @@ cd cleansh-workspace
 ```
 
 
-2. **Build the Workspace:**
+2. **Build All Crates:**
 ```bash
-cargo build --release
+cargo build --release --workspace
 
 ```
 
 
-3. **Run Tests:**
+3. **Run the Test Suite:**
 ```bash
+# Runs unit tests, integration tests, and entropy math verification
 cargo test --workspace
 
 ```
 
 
+4. **Install the CLI Locally:**
+```bash
+cargo install --path cleansh
+
+```
+
+
 
 ---
 
-### **Community and Support**
+## Contributing
 
-* **Ask a Question or Share an Idea:** Our **[GitHub Discussions](https://github.com/KarmaYama/cleansh-workspace/discussions)** page is the best place to connect.
-* **Report a Bug:** Please open an issue on the **[Issues page](https://github.com/KarmaYama/cleansh-workspace/issues)**.
+We welcome contributions! Whether it's optimizing the math engine, adding new TUI widgets, or improving documentation.
+
+1. Check the [Issues](https://github.com/KarmaYama/cleansh-workspace/issues) page.
+2. Read the [Contributing Guide](https://www.google.com/search?q=CONTRIBUTING.md).
+3. Open a Pull Request.
 
 ---
 
-**CleanSH Workspace: Precision redaction through statistical anomaly detection.**
-
-Would you like me to also update the individual README files in `/cleansh-core` or `/cleansh-entropy` to include their specific API documentation?
+**CleanSH Workspace**
+*Precision redaction through statistical anomaly detection.*
