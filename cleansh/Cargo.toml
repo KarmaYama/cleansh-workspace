@@ -2,7 +2,7 @@
 # cleansh/Cargo.toml
 [package]
 name = "cleansh"
-version = "0.1.11"
+version = "0.2.0"
 edition = "2024"
 publish = true
 license = "MIT OR Apache-2.0"
@@ -25,7 +25,7 @@ eula = false
 license_notes = "Licensed under the Apache License, Version 2.0 or the MIT license, at your option."
 
 [dependencies]
-cleansh-core = { version = "0.1.5", path = "../cleansh-core" }
+cleansh-core = { version = "0.1.6", path = "../cleansh-core" }
 clap = { version = "4.5", features = ["derive", "env"] }
 dotenvy = "0.15"
 serde = { version = "1.0", features = ["derive"] }
@@ -59,10 +59,14 @@ keyring = "3.6"
 fs2 = "0.4"
 sha2 = "0.10"
 serde_with = "3.14.0"
+ratatui = "0.29.0"
+crossterm = { version = "0.28", features = ["event-stream"] }
+tokio = { version = "1.48.0", features = ["full"] }
 
 # STRICTLY PIN RANDOMNESS
 rand = "=0.8.5"
 rand_core = "=0.6.4"
+futures = "0.3.31"
 
 [dev-dependencies]
 assert_cmd = "2.0"

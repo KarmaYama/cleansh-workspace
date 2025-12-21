@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.1.6] - 2025-12-20 — Heat-Mapping API & Dependency Inversion
+
+### Added
+* **Heat Score Provider:** Updated the `SanitizationEngine` trait with `get_heat_scores(&self, content: &str)`.This allows UI implementations to render statistical heatmaps without direct dependencies on the low-level math crate.
+***Statistical Decay Walk:** Implemented the high-level orchestration for entropy gradient extraction, enabling precision redaction in unstructured logs.
+
+
 ## [0.1.5] - 2025-12-20 — Dynamic Entropy Configuration
 
 ### Added

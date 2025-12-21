@@ -92,7 +92,7 @@ mod tests {
                     version: "0.1.8".to_string(),
                     created_at: "2025-01-01T00:00:00Z".to_string(),
                     updated_at: "2025-01-01T00:00:00Z".to_string(),
-                    author: "Obscura Team".to_string(),
+                    author: "Relay Team".to_string(),
                 },
             ],
             engines: Default::default(), // <--- Added this line to fix the compiler error

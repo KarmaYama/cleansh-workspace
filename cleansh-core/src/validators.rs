@@ -5,7 +5,7 @@
 //! for sensitive information such as SSN and UK NINO. These functions help reduce
 //! false positives by applying structural and known invalid pattern checks.
 //!
-//! License: BUSL-1.1
+//! License: MIT OR APACHE 2.0
 
 use std::borrow::Cow;
 use std::collections::HashSet;

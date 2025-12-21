@@ -1,12 +1,10 @@
 # CleanSH – Sanitize Your Terminal Output, Securely.
 
-[![Downloads from crates.io](https://img.shields.io/crates/d/cleansh.svg?style=for-the-badge&labelColor=334155&color=4FC3F7)](https://crates.io/crates/cleansh) [![CodeQL](https://github.com/KarmaYama/cleansh/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/KarmaYama/cleansh/actions/workflows/github-code-scanning/codeql) [![CodeQL Advanced](https://github.com/KarmaYama/cleansh/actions/workflows/codeql.yml/badge.svg)](https://github.com/KarmaYama/cleansh/actions/workflows/codeql.yml) [![Dependabot Updates](https://github.com/KarmaYama/cleansh/actions/workflows/dependabot/dependabot-updates/badge.svg)](https://github.com/KarmaYama/cleansh/actions/workflows/dependabot/dependabot-updates) [![Release](https://github.com/KarmaYama/cleansh/actions/workflows/release.yml/badge.svg)](https://github.com/KarmaYama/cleansh/actions/workflows/release.yml) [![Rust CI](https://github.com/KarmaYama/cleansh/actions/workflows/rust.yml/badge.svg)](https://github.com/KarmaYama/cleansh/actions/workflows/rust.yml) [![Star](https://img.shields.io/github/stars/KarmaYama/cleansh.svg?style=social)](https://github.com/KarmaYama/cleansh/stargazers)
-
-**[Contributing Guidelines](CONTRIBUTING.md)** | **[Code of Conduct](CODE_OF_CONDUCT.md)** | **[Changelog](CHANGELOG.md)** | **[Security Policy](SECURITY.md)** | **[Trademark Policy](TRADEMARK.md)** | **[Command Handbook](COMMANDS.md)**
+**[Contributing Guidelines](https://www.google.com/search?q=CONTRIBUTING.md)** | **[Code of Conduct](https://www.google.com/search?q=CODE_OF_CONDUCT.md)** | **[Changelog](CHANGELOG.md)** | **[Security Policy](SECURITY.md)** | **[Trademark Policy](https://www.google.com/search?q=TRADEMARK.md)** | **[Command Handbook](https://www.google.com/search?q=COMMANDS.md)**
 
 > CleanSH (clean shell) is a high‑trust, single‑purpose CLI tool designed to sanitize terminal output for safe sharing.
 > It prioritizes security by default, requires zero configuration to get started, and offers extendability when needed.
-> The project is in active development, with **`v0.1.11`** bringing significant enhancements to redaction accuracy, security, and user control.
+> The project is in active development, with **`v0.1.12`** bringing major advancements in surgical redaction precision and statistical explainability.
 > We value your feedback. Please report any issues you encounter. Star the repository if you like it!
 
 ---
@@ -14,15 +12,15 @@
 ## Table of Contents
 
 | Section |
-| :---------------------------------------------------------------------- |
-| [1. Overview](#1-overview) |
-| [2. License (Open Core)](#2-license-open-core) |
-| [3. Core Capabilities](#3-core-capabilities) |
-| [4. The New Entropy Engine](#4-the-new-entropy-engine) |
-| [5. Usage Examples](#5-usage-examples) |
-| [6. Configuration Strategy](#6-configuration-strategy) |
-| [7. Future Vision](#7-future-vision) |
-| [8. Installation](#8-installation) |
+| --- |
+| [1. Overview](https://www.google.com/search?q=%231-overview) |
+| [2. License (Open Core)](https://www.google.com/search?q=%232-license-open-core) |
+| [3. Core Capabilities](https://www.google.com/search?q=%233-core-capabilities) |
+| [4. The Entropy Engine & Explainability](https://www.google.com/search?q=%234-the-entropy-engine--explainability) |
+| [5. Usage Examples](https://www.google.com/search?q=%235-usage-examples) |
+| [6. Configuration Strategy](https://www.google.com/search?q=%236-configuration-strategy) |
+| [7. Future Vision](https://www.google.com/search?q=%237-future-vision) |
+| [8. Installation](https://www.google.com/search?q=%238-installation) |
 
 ---
 
@@ -55,11 +53,13 @@ Based on our rigorously passing test suite, `CleanSH` accurately masks:
 * **Emails:** Common email formats (e.g., `user@example.com`).
 * **IP Addresses:** IPv4 and IPv6.
 * **Tokens & Secrets:**
-    * **JWTs**
-    * **GitHub PATs** (`ghp_…`, `github_pat_…`)
-    * **Stripe keys** (`sk_live_…`)
-    * **Cloud Keys:** AWS, GCP, Azure.
-    * **SSH keys & Generic Hex/Tokens.**
+* **JWTs**
+* **GitHub PATs** (`ghp_…`, `github_pat_…`)
+* **Stripe keys** (`sk_live_…`)
+* **Cloud Keys:** AWS, GCP, Azure.
+* **SSH keys & Generic Hex/Tokens.**
+
+
 * **PII:** Credit Cards, SSN (US), NINO (UK), South African IDs.
 * **Paths:** OS-agnostic path redaction (`/home/user` -> `~/`).
 
@@ -71,40 +71,42 @@ Based on our rigorously passing test suite, `CleanSH` accurately masks:
 
 ---
 
-## 4. The New Entropy Engine
+## 4. The Entropy Engine & Explainability
 
-**New in v0.1.9:** `CleanSH` now includes a context-aware **Entropy Engine** alongside its Regex core.
+**v0.1.12 Evolution:** `CleanSH` features a context-aware **Entropy Engine** that moves beyond simple sliding windows to provide surgical precision.
 
-Standard regex rules require you to know the *format* of a secret (e.g., "starts with `sk_live_`"). But what about a random 32-character database password or a custom API key? If you don't have a regex for it, standard tools will miss it.
+Standard regex rules require you to know the *format* of a secret. The Entropy Engine solves this by detecting **statistical anomalies**—tokens that are mathematically too random to be natural language or code.
 
-The Entropy Engine solves this by detecting **statistical anomalies**—tokens that are mathematically too random to be natural language or code.
+### 4.1. Surgical Precision: The "Heat-Seeker" Algorithm
 
-### 4.1. The "False Positive" Problem (And How We Solved It)
+Most entropy scanners over-redact because they mask the entire fixed-size window. CleanSH solves "Locator Bleed" via:
 
-Most entropy scanners fail because of the **Self-Reference Paradox**: when they calculate the "average randomness" of a text block to see if a token is an outlier, they include the token itself in that average. A high-entropy secret inflates the baseline, effectively hiding itself.
+1. **Semantic Boundary Anchoring:** Detection snaps to common delimiters (like `:` or `=`), protecting labels like `auth_key=`.
+2. **Statistical Decay Walk:** The engine performs a character-by-character "walk" backward from the detection site, identifying exactly where randomness ends and English begins.
+3. **Lowercase Run Heuristic:** Automatically recognizes and preserves predictable natural language suffixes like `_extra_padding`.
 
-**The CleanSH Solution: "Leave-One-Out" Baseline**
-Our engine uses a rigorous statistical approach:
-1.  **Isolation:** When analyzing a candidate token (e.g., `8x9#bF2!kL`), we calculate the baseline entropy of the surrounding context *while mathematically excluding the token itself*.
-2.  **Z-Score Analysis:** We calculate a Z-score (standard deviation from the mean). If the token is significantly more random than its isolated background, it is flagged.
-3.  **Context Boosting:** We scan the preceding bytes for "danger words" (like `key`, `auth`, `secret`) using an Aho-Corasick automaton. A match here lowers the statistical threshold required to flag the secret.
+### 4.2. Explainability: Statistical Heatmaps
 
-### 4.2. Enabling the Engine
+CleanSH solves the "Signal-to-Noise" crisis by providing transparency. Users can visualize the randomness intensity to understand *why* a redaction occurred.
 
-The Entropy Engine is opt-in because it is computationally more intensive than regex.
+* **Critical Heat:** Bright Red indicates high-entropy secret cores.
+* **Predictable Baseline:** Dimmed text indicates safe natural language.
 
-**To enable it for a single run:**
+### 4.3. Enabling the Engine
+
+**To enable redaction for a single run:**
+
 ```bash
-# Scan with BOTH Regex and Entropy engines
 cat production.log | cleansh sanitize --engine entropy
 
 ```
 
-**When to use it:**
+**To visualize the entropy heatmap (Explainability Mode):**
 
-* Scanning legacy codebases for hardcoded passwords.
-* Auditing logs where the format of secrets is unknown.
-* Sanitizing messy data dumps containing mixed binary/text content.
+```bash
+echo "8x9#bF2!kL0Z@mN9" | cleansh sanitize --engine entropy --heatmap
+
+```
 
 ---
 
@@ -117,7 +119,7 @@ echo "My email is test@example.com" | cleansh sanitize
 
 ```
 
-**Using the Entropy Engine:**
+**Surgical Entropy Redaction:**
 
 ```bash
 cat unknown_logs.txt | cleansh sanitize --engine entropy
@@ -170,12 +172,15 @@ rules:
 
 ```
 
-### Enable/Disable
+### Entropy Tuning
 
-Control rules on the fly:
+Fine-tune sensitivity directly in your configuration:
 
-```bash
-cleansh sanitize --enable "uk_nino,aws_secret_key" --disable "email"
+```yaml
+engines:
+  entropy:
+    threshold: 0.3
+    window_size: 16
 
 ```
 
@@ -187,7 +192,7 @@ CleanSH is evolving into an intelligent security assistant.
 
 * **WASM Core:** Running directly in the browser for zero-install sanitization.
 * **Tauri GUI:** A native desktop app for non-CLI workflows.
-* **Entropy Tuning:** Interactive feedback loops to train the entropy engine on your specific data.
+* **Deep-Packet-Inspection:** Future modular backends using the plug-and-play engine pattern.
 
 ---
 
@@ -207,7 +212,7 @@ cargo install cleansh
 ### From Source:
 
 ```bash
-git clone [https://github.com/KarmaYama/cleansh-workspace.git](https://github.com/KarmaYama/cleansh-workspace.git)
+git clone https://github.com/KarmaYama/cleansh-workspace.git
 cd cleansh
 cargo build --release
 
@@ -218,4 +223,3 @@ cargo build --release
 **Precision redaction. Local‑only trust. Built for devs.**
 
 *Copyright 2025 Relay.*
-

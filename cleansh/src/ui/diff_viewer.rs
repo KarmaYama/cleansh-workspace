@@ -1,97 +1,94 @@
-//! Module for displaying differences between original and sanitized content.
+// cleansh/src/ui/diff_viewer.rs
+//! TUI-native Diff Viewer for CleanSH v0.2.0.
 //!
-//! This module provides functionality to generate and print a human-readable
-//! diff view, highlighting added and removed lines, typically used to show
-//! the changes made by the redaction process. It leverages the `diffy` crate
-//! for patch generation and a custom styling helper for colored terminal output.
+//! Generates Ratatui-compatible Spans and Lines to visualize redactions.
 
 use crate::ui::theme::{ThemeEntry, ThemeMap};
-use std::io::Write;
-use anyhow::Result;
-use diffy::{create_patch, Line};
+use ratatui::text::{Line, Span};
+use ratatui::style::{Style, Color, Modifier};
+use diffy::{create_patch, Line as DiffLine};
 
-// Import get_styled_text from output_format
-use crate::ui::output_format::get_styled_text;
-
-/// Prints a diff view of the original and sanitized content to the given writer.
-///
-/// This function takes two string slices, `original_content` and `sanitized_content`,
-/// computes their differences, and prints a standard diff-like output.
-/// Lines present only in the original content are marked with '-' and colored red,
-/// lines present only in the sanitized content are marked with '+' and colored green,
-/// and common lines are shown without a prefix.
-///
-/// The diff header and footer are styled using `ThemeEntry::DiffHeader`.
-///
-/// # Type Parameters
-///
-/// * `W`: A type that implements `std::io::Write`, allowing output to various destinations
-///         like `io::stdout()`, `io::stderr()`, or a file.
-///
-/// # Arguments
-///
-/// * `original_content` - The original string content before any sanitization.
-/// * `sanitized_content` - The string content after sensitive data has been (potentially) sanitized.
-/// * `writer` - The output writer where the diff will be printed (e.g., `&mut io::stdout()`).
-/// * `theme_map` - A `HashMap` containing the defined `ThemeStyle`s to apply colors to the output.
-/// * `enable_colors` - A boolean flag indicating whether ANSI colors should be used in the output.
-///
-/// # Returns
-///
-/// A `Result` indicating `Ok(())` on successful write operations or an `Err`
-/// if any writing to the `writer` fails.
-pub fn print_diff<W: Write>(
-    original_content: &str,
-    sanitized_content: &str,
-    writer: &mut W,
+/// Generates a list of Lines for a Ratatui List or Paragraph widget.
+/// This highlights exactly what was removed (red) and what was added (green).
+pub fn generate_diff_lines<'a>(
+    original: &'a str,
+    sanitized: &'a str,
     theme_map: &ThemeMap,
-    enable_colors: bool,
-) -> Result<()> {
-    let diff_header = get_styled_text("\n--- Diff View ---", ThemeEntry::DiffHeader, theme_map, enable_colors);
-    writeln!(writer, "{}", diff_header)?;
+) -> Vec<Line<'a>> {
+    let patch = create_patch(original, sanitized);
+    let mut lines = Vec::new();
 
-    let patch = create_patch(original_content, sanitized_content);
+    // Add Header Line
+    lines.push(Line::from(Span::styled(
+        "--- Diff Analysis ---",
+        Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+    )));
 
     for hunk in patch.hunks() {
         for line_change in hunk.lines() {
-            let content_str = match line_change {
-                Line::Delete(s) => s,
-                Line::Insert(s) => s,
-                Line::Context(s) => s,
-            };
-
-            // `diffy` might escape newlines as `\n` in content; replace them back to actual newlines
-            let s_with_actual_newlines = content_str.replace("\\n", "\n");
-
-            for segment in s_with_actual_newlines.lines() {
-                match line_change {
-                    Line::Delete(_) => {
-                        let styled_line = get_styled_text(
-                            &format!("-{}", segment),
-                            ThemeEntry::DiffRemoved,
-                            theme_map,
-                            enable_colors,
-                        );
-                        writeln!(writer, "{}", styled_line)?;
-                    }
-                    Line::Insert(_) => {
-                        let styled_line = get_styled_text(
-                            &format!("+{}", segment),
-                            ThemeEntry::DiffAdded,
-                            theme_map,
-                            enable_colors,
-                        );
-                        writeln!(writer, "{}", styled_line)?;
-                    }
-                    Line::Context(_) => {
-                        // Context lines are prefixed with a space for alignment with diff output
-                        writeln!(writer, " {}", segment)?;
-                    }
+            match line_change {
+                DiffLine::Delete(s) => {
+                    lines.push(Line::from(vec![
+                        Span::styled("- ", Style::default().fg(Color::Red)),
+                        Span::styled(s.to_string(), get_theme_style(ThemeEntry::DiffRemoved, theme_map)),
+                    ]));
+                }
+                DiffLine::Insert(s) => {
+                    lines.push(Line::from(vec![
+                        Span::styled("+ ", Style::default().fg(Color::Green)),
+                        Span::styled(s.to_string(), get_theme_style(ThemeEntry::DiffAdded, theme_map)),
+                    ]));
+                }
+                DiffLine::Context(s) => {
+                    lines.push(Line::from(vec![
+                        Span::raw("  "),
+                        Span::raw(s.to_string()),
+                    ]));
                 }
             }
         }
     }
-    let diff_footer = get_styled_text("-----------------", ThemeEntry::DiffHeader, theme_map, enable_colors);
-    writeln!(writer, "{}", diff_footer)?;
-    Ok(())
+
+    if lines.len() <= 1 {
+        lines.push(Line::from(Span::raw("No changes detected in this segment.")));
+    }
+
+    lines
+}
+
+/// Helper to map our ThemeMap entries to Ratatui Styles.
+fn get_theme_style(entry: ThemeEntry, theme_map: &ThemeMap) -> Style {
+    if let Some(theme_style) = theme_map.get(&entry) {
+        if let Some(color) = &theme_style.fg {
+            return Style::default().fg(color.to_ansi_color_ratatui());
+        }
+    }
+    Style::default()
+}
+
+/// Extension trait for ThemeColor to support Ratatui types.
+impl crate::ui::theme::ThemeColor {
+    pub fn to_ansi_color_ratatui(&self) -> Color {
+        match self {
+            crate::ui::theme::ThemeColor::Named(name) => match name.as_str() {
+                "black" => Color::Black,
+                "red" => Color::Red,
+                "green" => Color::Green,
+                "yellow" => Color::Yellow,
+                "blue" => Color::Blue,
+                "magenta" => Color::Magenta,
+                "cyan" => Color::Cyan,
+                "white" => Color::White,
+                "brightblack" => Color::DarkGray,
+                "brightred" => Color::LightRed,
+                "brightgreen" => Color::LightGreen,
+                "brightyellow" => Color::LightYellow,
+                "brightblue" => Color::LightBlue,
+                "brightmagenta" => Color::LightMagenta,
+                "brightcyan" => Color::LightCyan,
+                "brightwhite" => Color::White,
+                _ => Color::Reset,
+            },
+        }
+    }
 }

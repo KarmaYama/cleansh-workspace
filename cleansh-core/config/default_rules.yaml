@@ -6,7 +6,7 @@
 # Use these rules to redact sensitive data in logs, code, and other text.
 # Ensure to test and validate these patterns in your specific context.
 # cleansh-core/config/default_rules.yaml
-# License: BUSL-1.1
+# License: MIT OR APACHE 2.0
 
 rules:
   # ==== CONTACT INFO ====
@@ -17,7 +17,7 @@ rules:
     description: "Standard email address (supports TLDs up to 63 chars)."
     pattern_type: "regex"
     version: "0.1.8"
-    author: "Obscura Team"
+    author: "Relay Team"
     created_at: "2025-06-12T00:00:00Z"
     updated_at: "2025-08-11T00:00:00Z"
     multiline: false
@@ -31,7 +31,7 @@ rules:
     description: "Common phone number formats including optional country code, area code, and separators."
     pattern_type: "regex"
     version: "0.1.8"
-    author: "Obscura Team"
+    author: "Relay Team"
     created_at: "2025-06-12T00:00:00Z"
     updated_at: "2025-08-11T00:00:00Z"
     multiline: false
@@ -46,7 +46,7 @@ rules:
     description: "Strict IPv4 address with each octet in 0–255. Simpler regex than original."
     pattern_type: "regex"
     version: "0.1.8"
-    author: "Obscura Team"
+    author: "Relay Team"
     created_at: "2025-06-12T00:00:00Z"
     updated_at: "2025-08-11T00:00:00Z"
     multiline: false
@@ -60,7 +60,7 @@ rules:
     description: "Uncompressed IPv6 address (8 groups of 1–4 hex digits). Compressed (::) forms not covered by default."
     pattern_type: "regex"
     version: "0.1.8"
-    author: "Obscura Team"
+    author: "Relay Team"
     created_at: "2025-06-12T00:00:00Z"
     updated_at: "2025-08-11T00:00:00Z"
     multiline: false
@@ -75,7 +75,7 @@ rules:
     description: "JSON Web Token (three Base64URL-encoded segments)."
     pattern_type: "regex"
     version: "0.1.8"
-    author: "Obscura Team"
+    author: "Relay Team"
     created_at: "2025-06-12T00:00:00Z"
     updated_at: "2025-08-11T00:00:00Z"
     multiline: false
@@ -89,7 +89,7 @@ rules:
     description: "Classic GitHub PAT (40 chars, prefix ghp_)."
     pattern_type: "regex"
     version: "0.1.8"
-    author: "Obscura Team"
+    author: "Relay Team"
     created_at: "2025-06-12T00:00:00Z"
     updated_at: "2025-08-11T00:00:00Z"
     multiline: false
@@ -103,7 +103,7 @@ rules:
     description: "GitHub fine-grained PAT (72 chars, prefix github_pat_)."
     pattern_type: "regex"
     version: "0.1.8"
-    author: "Obscura Team"
+    author: "Relay Team"
     created_at: "2025-06-12T00:00:00Z"
     updated_at: "2025-08-11T00:00:00Z"
     multiline: false
@@ -117,7 +117,7 @@ rules:
     description: "Stripe keys (live/test/restricted), 24 alphanumeric chars."
     pattern_type: "regex"
     version: "0.1.8"
-    author: "Obscura Team"
+    author: "Relay Team"
     created_at: "2025-06-12T00:00:00Z"
     updated_at: "2025-08-11T00:00:00Z"
     multiline: false
@@ -131,7 +131,7 @@ rules:
     description: "AWS Access Key ID (20 chars, prefixes AKIA/ASIA)."
     pattern_type: "regex"
     version: "0.1.8"
-    author: "Obscura Team"
+    author: "Relay Team"
     created_at: "2025-06-12T00:00:00Z"
     updated_at: "2025-08-11T00:00:00Z"
     multiline: false
@@ -145,7 +145,7 @@ rules:
     description: "AWS Secret Access Key (40-char Base64-style). **Opt-in only: High false positive risk.**"
     pattern_type: "regex"
     version: "0.1.8"
-    author: "Obscura Team"
+    author: "Relay Team"
     created_at: "2025-06-12T00:00:00Z"
     updated_at: "2025-08-11T00:00:00Z"
     multiline: false
@@ -160,7 +160,7 @@ rules:
     description: "Google Cloud API Key (prefix AIza, 39 chars)."
     pattern_type: "regex"
     version: "0.1.8"
-    author: "Obscura Team"
+    author: "Relay Team"
     created_at: "2025-06-12T00:00:00Z"
     updated_at: "2025-08-11T00:00:00Z"
     multiline: false
@@ -174,7 +174,7 @@ rules:
     description: "Google OAuth token (prefix ya29., 20–120 chars)."
     pattern_type: "regex"
     version: "0.1.8"
-    author: "Obscura Team"
+    author: "Relay Team"
     created_at: "2025-06-12T00:00:00Z"
     updated_at: "2025-08-11T00:00:00Z"
     multiline: false
@@ -188,7 +188,7 @@ rules:
     description: "SSH private key block (RSA/DSA/EC/OpenSSH), multiline."
     pattern_type: "regex"
     version: "0.1.8"
-    author: "Obscura Team"
+    author: "Relay Team"
     created_at: "2025-06-12T00:00:00Z"
     updated_at: "2025-08-11T00:00:00Z"
     multiline: true
@@ -203,7 +203,7 @@ rules:
     description: "32-char hex strings (MD5, etc.). **Opt-in only: High false positive risk.**"
     pattern_type: "regex"
     version: "0.1.8"
-    author: "Obscura Team"
+    author: "Relay Team"
     created_at: "2025-06-12T00:00:00Z"
     updated_at: "2025-08-11T00:00:00Z"
     multiline: false
@@ -218,7 +218,7 @@ rules:
     description: "64-char hex strings (SHA-256, etc.). **Opt-in only: High false positive risk.**"
     pattern_type: "regex"
     version: "0.1.8"
-    author: "Obscura Team"
+    author: "Relay Team"
     created_at: "2025-06-12T00:00:00Z"
     updated_at: "2025-08-11T00:00:00Z"
     multiline: false
@@ -233,7 +233,7 @@ rules:
     description: "Generic token pattern (e.g. access_token_12345, TOKENXYZ, long alphanumeric strings). **Opt-in only: High false positive risk.**"
     pattern_type: "regex"
     version: "0.1.8"
-    author: "Obscura Team"
+    author: "Relay Team"
     created_at: "2025-06-12T00:00:00Z"
     updated_at: "2025-08-11T00:00:00Z"
     multiline: false
@@ -248,7 +248,7 @@ rules:
     description: "Common key=value patterns for passwords, secrets, and API keys. **Opt-in only: High false positive risk.**"
     pattern_type: "regex"
     version: "0.1.8"
-    author: "Obscura Team"
+    author: "Relay Team"
     created_at: "2025-06-12T00:00:00Z"
     updated_at: "2025-08-11T00:00:00Z"
     multiline: true
@@ -264,7 +264,7 @@ rules:
     description: "Visa credit card numbers (13 or 16 digits, starts with 4), with Luhn check."
     pattern_type: "regex"
     version: "0.1.8"
-    author: "Obscura Team"
+    author: "Relay Team"
     created_at: "2025-06-12T00:00:00Z"
     updated_at: "2025-08-11T00:00:00Z"
     multiline: true
@@ -277,7 +277,7 @@ rules:
     description: "Mastercard credit card numbers (16 digits, starts with 51-55), with Luhn check."
     pattern_type: "regex"
     version: "0.1.8"
-    author: "Obscura Team"
+    author: "Relay Team"
     created_at: "2025-06-12T00:00:00Z"
     updated_at: "2025-08-11T00:00:00Z"
     multiline: true
@@ -290,7 +290,7 @@ rules:
     description: "American Express card numbers (15 digits, starts with 34 or 37), with Luhn check."
     pattern_type: "regex"
     version: "0.1.8"
-    author: "Obscura Team"
+    author: "Relay Team"
     created_at: "2025-06-12T00:00:00Z"
     updated_at: "2025-08-11T00:00:00Z"
     multiline: true
@@ -303,7 +303,7 @@ rules:
     description: "Discover card numbers (16 digits, starts with 6011 or 65), with Luhn check."
     pattern_type: "regex"
     version: "0.1.8"
-    author: "Obscura Team"
+    author: "Relay Team"
     created_at: "2025-06-12T00:00:00Z"
     updated_at: "2025-08-11T00:00:00Z"
     multiline: true
@@ -316,7 +316,7 @@ rules:
     description: "13-16 digit credit card numbers with optional spaces or hyphens (Visa, MasterCard, Amex, Discover - no Luhn check)."
     pattern_type: "regex"
     version: "0.1.8"
-    author: "Obscura Team"
+    author: "Relay Team"
     created_at: "2025-06-12T00:00:00Z"
     updated_at: "2025-08-11T00:00:00Z"
     multiline: true
@@ -330,7 +330,7 @@ rules:
     description: "US SSN (XXX-XX-XXXX) format. Stricter validation handled in code."
     pattern_type: "regex"
     version: "0.1.8"
-    author: "Obscura Team"
+    author: "Relay Team"
     created_at: "2025-06-12T00:00:00Z"
     updated_at: "2025-08-11T00:00:00Z"
     multiline: false
@@ -344,7 +344,7 @@ rules:
     description: "UK National Insurance Number (two letters, six digits, one letter, with optional spaces)."
     pattern_type: "regex"
     version: "0.1.8"
-    author: "Obscura Team"
+    author: "Relay Team"
     created_at: "2025-06-12T00:00:00Z"
     updated_at: "2025-08-11T00:00:00Z"
     multiline: false
@@ -359,7 +359,7 @@ rules:
     description: "South African ID (13 digits: YYMMDDSSSCCZ, format only, no Luhn check)."
     pattern_type: "regex"
     version: "0.1.8"
-    author: "Obscura Team"
+    author: "Relay Team"
     created_at: "2025-06-12T00:00:00Z"
     updated_at: "2025-08-11T00:00:00Z"
     multiline: false
@@ -374,7 +374,7 @@ rules:
     description: "Linux absolute path under /home/username."
     pattern_type: "regex"
     version: "0.1.8"
-    author: "Obscura Team"
+    author: "Relay Team"
     created_at: "2025-06-12T00:00:00Z"
     updated_at: "2025-08-11T00:00:00Z"
     multiline: false
@@ -388,7 +388,7 @@ rules:
     description: "macOS absolute path under /Users/username."
     pattern_type: "regex"
     version: "0.1.8"
-    author: "Obscura Team"
+    author: "Relay Team"
     created_at: "2025-06-12T00:00:00Z"
     updated_at: "2025-08-11T00:00:00Z"
     multiline: false
@@ -402,7 +402,7 @@ rules:
     description: "Absolute Windows path with drive letter and subdirectories."
     pattern_type: "regex"
     version: "0.1.8"
-    author: "Obscura Team"
+    author: "Relay Team"
     created_at: "2025-06-12T00:00:00Z"
     updated_at: "2025-08-11T00:00:00Z"
     multiline: false
@@ -417,7 +417,7 @@ rules:
     description: "Slack webhook URL token."
     pattern_type: "regex"
     version: "0.1.8"
-    author: "Obscura Team"
+    author: "Relay Team"
     created_at: "2025-06-12T00:00:00Z"
     updated_at: "2025-08-11T00:00:00Z"
     multiline: false
@@ -432,7 +432,7 @@ rules:
     description: "Base64-encoded HTTP Basic Auth header."
     pattern_type: "regex"
     version: "0.1.8"
-    author: "Obscura Team"
+    author: "Relay Team"
     created_at: "2025-06-12T00:00:00Z"
     updated_at: "2025-08-11T00:00:00Z"
     multiline: false

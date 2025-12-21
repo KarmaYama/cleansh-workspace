@@ -1,3 +1,4 @@
+// cleansh-core/src/engine.rs
 //! Defines the core SanitizationEngine trait and related data structures.
 //!
 //! The `SanitizationEngine` trait provides a pluggable interface for different
@@ -5,9 +6,10 @@
 //! contract that all such engines must adhere to, ensuring a consistent
 //! and interchangeable core API for `cleansh`.
 //!
-//! License: BUSL-1.1
+//! License: MIT OR APACHE 2.0
 
 use anyhow::Result;
+use tokio::sync::mpsc;
 
 // Publicly exposed types from other modules
 use crate::config::{RedactionConfig, RedactionSummaryItem};
@@ -69,6 +71,10 @@ pub trait SanitizationEngine: Send + Sync {
     /// * `source_id` - An identifier for the source of the content (e.g., a file path).
     fn find_matches_for_ui(&self, content: &str, source_id: &str) -> Result<Vec<RedactionMatch>>;
 
+    /// Returns the statistical "heat" (entropy) for each character in the input.
+    /// This allows the UI to render heatmaps via dependency inversion.
+    fn get_heat_scores(&self, content: &str) -> Vec<f64>;
+
     /// Returns a reference to the `CompiledRules` used by the engine.
     ///
     /// This is used by external components, such as the statistics command,
@@ -81,4 +87,8 @@ pub trait SanitizationEngine: Send + Sync {
 
     /// Returns a reference to the engine's options.
     fn get_options(&self) -> &EngineOptions;
+
+    /// Sets the remediation channel for the self-healing orchestrator.
+    /// This enables v0.2.0 "Tee-Logic" where matches are sent asynchronously for healing.
+    fn set_remediation_tx(&mut self, tx: mpsc::Sender<RedactionMatch>);
 }

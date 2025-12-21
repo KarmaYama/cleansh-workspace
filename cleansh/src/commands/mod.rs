@@ -5,8 +5,5 @@
 
 /// src/commands/mod.rs
 
-pub mod cleansh;
-pub mod stats;
 pub mod uninstall;
-pub mod verify;
-pub mod sync;
+

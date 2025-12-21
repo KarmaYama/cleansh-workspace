@@ -1,31 +1,25 @@
-# CleanSH Command Handbook
+# CleanSH Command Handbook: v0.1.12 Edition
 
-Welcome to the **CleanSH Command Handbook**! This guide dives deeper into `CleanSH`, your indispensable command-line utility for sanitizing sensitive information from terminal output.
-
-We'll go beyond just listing commands, exploring scenarios, use cases, and how to harness `CleanSH`'s full potential.
+Welcome to the updated **CleanSH Command Handbook**. With the release of **v0.1.12**, `CleanSH` has evolved from a pattern-matching tool into a **surgical statistical engine**. This guide covers the core capabilities, new explainability features, and strategic configuration options.
 
 ---
 
 ## 1. What is CleanSH?
 
-At its core, `CleanSH` (pronounced "clean shell") is a **high-trust, single-purpose CLI tool** designed to redact sensitive data from text streams. Think of it as your digital bouncer, ensuring confidential information like **IP addresses, email addresses, API keys, and even personal identifiers** never accidentally leak when you're sharing logs, debugging output, or collaborating with others.
+`CleanSH` (pronounced "clean shell") is a **high-trust, local-first CLI tool** designed to redact sensitive data from text streams. It serves as a digital bouncer for your logs, terminal output, and CI/CD pipelines, ensuring that **PII, IP addresses, and unstructured secrets** never leak during collaboration.
 
-It operates **locally**, requires zero configuration to get started with its robust default rules, and offers extensive flexibility for custom needs.
+### The v0.1.12 Milestone: Surgical Precision
+
+Unlike traditional scanners that redact entire blocks of text, `CleanSH` v0.1.12 introduces **Entropy Gradient Extraction**. It identifies the "heat core" of a secret and surgically "shrink-wraps" the redaction, preserving the surrounding natural language.
 
 ---
 
-## 2. Getting Started with CleanSH
+## 2. Getting Started
 
 ### Installation
 
-**From GitHub Releases (Recommended):**
-Download the latest prebuilt binaries for your platform from the [GitHub Releases](https://github.com/KarmaYama/cleansh-workspace/releases) page.
-
-**Install Script:**
-```bash
-curl -sSf [https://github.com/KarmaYama/cleansh-workspace/releases/download/v0.1.8/cleansh-installer.sh](https://github.com/KarmaYama/cleansh-workspace/releases/download/v0.1.8/cleansh-installer.sh) | sh
-
-```
+**From GitHub Releases:**
+Download prebuilt binaries for your platform from the [Releases Page](https://github.com/KarmaYama/cleansh-workspace/releases).
 
 **Via Cargo:**
 
@@ -36,138 +30,107 @@ cargo install cleansh
 
 ---
 
-## 3. Cleansh's Command Architecture
+## 3. Command Architecture
 
-`CleanSH` uses a subcommand-based architecture.
+`CleanSH` utilizes a modular subcommand structure to handle different stages of the data lifecycle.
 
 | Command | Description | Use Case |
 | --- | --- | --- |
-| **`cleansh sanitize`** | The primary command for redacting sensitive data. | Daily use, sanitizing logs or terminal output. |
-| **`cleansh scan`** | Scans for sensitive data and provides a report without redacting. | Security auditing, pre-scan assessments. |
-| **`cleansh profiles`** | Manages redaction profiles and rule sets. | Creating, signing, and verifying custom rules. |
-| **`cleansh uninstall`** | Safely removes the `cleansh` CLI and its associated files. | System maintenance. |
-| **`cleansh sync`** | (Enterprise) Synchronizes redaction profiles with a central server. | **Coming Soon:** Enterprise-grade policy management. |
-| **`cleansh verify`** | (Enterprise) Cryptographically verifies artifacts. | **Coming Soon:** Auditable compliance workflows. |
+| **`sanitize`** | The primary redaction engine. | Daily log cleaning and clipboard safety. |
+| **`scan`** | Audit mode (report only). | Pre-shipment security audits. |
+| **`profiles`** | Rule set management. | Creating and signing compliance sets. |
+| **`uninstall`** | Clean system removal. | System maintenance. |
 
 ---
 
 ## 4. Core Capabilities (Open Source)
 
-All core commands are free and open source under the **MIT OR Apache-2.0** license.
+All core features are free under the **MIT OR Apache-2.0** licenses.
 
-### 4.1. `cleansh sanitize` – Redacting Sensitive Output
+### 4.1. `cleansh sanitize` – Surgical Redaction
 
-This command handles the core redaction logic. It reads from standard input (`stdin`) or a file and writes the sanitized content to standard output (`stdout`) by default.
+This command processes input via `stdin` or files and applies the selected engine.
 
-**Basic Usage: Piping Content**
-
-```bash
-"User login attempt from test@example.com at 192.168.1.1." | cleansh sanitize
-
-```
-
-**Output:**
-
-```
-User login attempt from [EMAIL_REDACTED] at [IPV4_REDACTED].
-
-```
-
-**Using the Entropy Engine:**
-To catch unstructured secrets (like random API keys) that don't match regex patterns, use the entropy engine:
+**Basic Usage:**
 
 ```bash
-cat unknown_logs.txt | cleansh sanitize --engine entropy
+echo "User login: admin@relay.africa" | cleansh sanitize
 
 ```
 
-**Sanitizing File Content:**
+**New: The Heat-Seeker Engine**
+To catch unstructured secrets (random tokens) with surgical precision:
 
 ```bash
-cleansh sanitize ./application.log -o sanitized_application.log
+cat app.log | cleansh sanitize --engine entropy --entropy-threshold 0.3
 
 ```
 
-### 4.2. `cleansh scan` – Auditing for Secrets
+* **Surgical Extraction:** Automatically stops redacting when it hits English suffixes like `_padding` or `ing`.
+* **Semantic Anchoring:** Recognizes delimiters like `=` or `:` to protect labels.
 
-The `scan` command audits your files for secrets without modifying them.
+### 4.2. New: Entropy Heatmap (Explainability)
 
-**Scenario:** Audit a log file before sharing.
+V0.1.12 introduces the **Heatmap Mode**. Instead of redacting, it visualizes the randomness of every character, proving *why* the engine flagged a specific string.
 
 ```bash
-cleansh scan my_logfile.txt
+echo "key=8x9#bF2!kL0Z" | cleansh sanitize --engine entropy --heatmap
 
 ```
 
-**Output (example):**
-
-```
-Redaction Statistics Summary:
-  EmailAddress: 1 match
-  IPv4Address: 1 match
-
-```
+* **Red:** Critical randomness (likely a secret).
+* **Yellow:** Suspicious noise.
+* **Dimmed:** Predictable natural language.
 
 ### 4.3. `cleansh scan` – CI/CD Enforcement
 
-Use `scan` in your build pipeline to fail if secrets are found.
+Use `scan` to audit data without modification. It is ideal for build pipelines.
 
-**Scenario:** Fail the build if more than 0 secrets are detected.
+**Scenario:** Fail a GitHub Action if any secret is detected.
 
 ```bash
 docker logs my-app | cleansh scan --fail-over-threshold 0
 
 ```
 
-### 4.4. `cleansh profiles` – Managing Redaction Rules
-
-* **`cleansh profiles list`:** Lists all available local redaction profiles.
-* **`cleansh profiles sign`:** Signs a profile YAML file (useful for verifying integrity).
-
 ---
 
-## 5. Global Flags
+## 5. Global Flags & Tuning
 
-These flags work across most commands:
-
-* **Copy to Clipboard (`-c` / `--clipboard`):** Instantly copy output.
-* **Diff View (`-d` / `--diff`):** Show a colored diff of changes.
-* **Custom Config (`--config <path>`):** Load custom rules.
-* **Output File (`-o <path>`):** Write output to a file.
-* **Suppress Summary (`--no-redaction-summary`):** Hide the summary footer.
-* **Enable/Disable (`--enable`, `--disable`):** Toggle specific rules.
-* **Engine (`--engine`):** Choose between `regex` (default) or `entropy`.
-* **Quiet (`--quiet`):** Suppress informational logs.
+| Flag | Shortcut | Description |
+| --- | --- | --- |
+| **`--engine`** | N/A | Switch between `regex` (default) or `entropy`. |
+| **`--heatmap`** | N/A | Visualize statistical heat instead of redacting. |
+| **`--diff`** | `-D` | Show a colored unified diff of changes. |
+| **`--clipboard`** | `-c` | Instantly copy sanitized results to clipboard. |
+| **`--entropy-threshold`** | N/A | Sensitivity (0.0 to 1.0). Default is 0.5. |
+| **`--entropy-window`** | N/A | Sliding window size (e.g., 16 or 24). |
 
 ---
 
 ## 6. Configuration Strategy
 
-### Custom Rules
+### Custom YAML Rules
 
-Create `my_rules.yaml`:
+Create `rules.yaml` to define proprietary patterns:
 
 ```yaml
 rules:
-  - name: "emp_id"
-    pattern: 'EMP-\d{5}'
-    replace_with: '[EMPLOYEE_ID]'
+  - name: "internal_id"
+    pattern: 'ID-[A-Z]{3}-\d{4}'
+    replace_with: '[INTERNAL_ID]'
 
 ```
 
-Run:
+**Apply:**
 
 ```bash
-cat data.txt | cleansh sanitize --config ./my_rules.yaml
+cleansh sanitize input.txt --config ./rules.yaml
 
 ```
 
 ---
 
-**Precision redaction. Local-only trust. Built for devs.**
+**Precision Redaction. Explainable Security. Local-Only Trust.**
 
-*Copyright 2025 Relay.*
-
-```
-
-```
+*Copyright 2025 Relay. v0.1.12 Build.*

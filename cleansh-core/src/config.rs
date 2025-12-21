@@ -83,7 +83,7 @@ impl Default for RedactionRule {
             version: "1.0.0".to_string(),
             created_at: "1970-01-01T00:00:00Z".to_string(),
             updated_at: "1970-01-01T00:00:00Z".to_string(),
-            author: "Obscura Team".to_string(),
+            author: "Relay Team".to_string(),
             multiline: false,
             dot_matches_new_line: false,
             opt_in: false,

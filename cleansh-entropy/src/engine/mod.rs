@@ -2,6 +2,9 @@
 //!
 //! Implements a sliding-window strategy for locator-based detection
 //! and a heuristic-based extraction layer for precise redaction.
+//!
+//! This engine moves beyond static thresholds by identifying statistical outliers 
+//! relative to a local baseline entropy.
 
 extern crate alloc;
 use alloc::vec::Vec;
@@ -42,6 +45,9 @@ impl EntropyEngine {
     }
 
     /// Scans a byte slice using a sliding-window approach and refines the boundaries.
+    ///
+    /// This multi-stage pipeline first locates "heat" and then surgically extracts 
+    /// the secret core to avoid redacting surrounding natural language.
     pub fn scan(&self, text: &[u8]) -> Vec<EntropyMatch> {
         if text.len() < self.window_size {
             return Vec::new();
@@ -66,24 +72,26 @@ impl EntropyEngine {
                     confidence,
                     entropy: anomaly.token_entropy,
                 });
-                // Jump forward to find the next potential unique secret
+                // Once we find heat, jump half a window to stay efficient
                 i += self.window_size / 2; 
             } else {
                 i += 1;
             }
         }
 
-        // Pass 2: Consolidate overlapping windows
+        // Pass 2: Consolidate overlapping windows into single blocks
         let consolidated = self.consolidate_matches(raw_matches);
 
-        // Pass 3: Semantic Extraction (Surgical Trim)
+        // Pass 3: Entropy Gradient Extraction (Surgical Trim)
+        // Shrinks boundaries by walking back until entropy drops into natural language patterns.
         consolidated
             .into_iter()
             .map(|m| self.extract_secret_core(m, text))
-            .filter(|m| (m.end - m.start) >= 6) // Ensure we still have a valid secret length
+            .filter(|m| (m.end - m.start) >= 6) // Final sanity check: secrets are rarely < 6 chars
             .collect()
     }
 
+    /// Merges overlapping ranges from the sliding window into single contiguous redactions.
     fn consolidate_matches(&self, matches: Vec<EntropyMatch>) -> Vec<EntropyMatch> {
         if matches.is_empty() { return matches; }
 
@@ -105,37 +113,53 @@ impl EntropyEngine {
         merged
     }
 
-    /// Heat-Seeker: Refines the match by anchoring to delimiters and stripping noise.
+    /// Heat-Seeker: Refines the match by anchoring to delimiters and stripping entropy decay.
+    ///
+    /// This resolves the "signal-to-noise" crisis by finding the sharp drop-off 
+    /// between random data and natural language (lowercase letters/spaces).
     fn extract_secret_core(&self, mut m: EntropyMatch, text: &[u8]) -> EntropyMatch {
         let mut start = m.start;
         let mut end = m.end;
 
-        // 1. Semantic Anchor: Look for the 'split' between label and value
-        // We look for the LAST colon or equals sign within the first half of the match
+        // 1. Semantic Anchor: Look for the split between label and value (e.g. key=)
+        // We search for the last delimiter in the window to protect labels like 'auth_key='
         let search_range = &text[start..end];
         if let Some(pos) = search_range.iter().rposition(|&b| b == b':' || b == b'=') {
             let potential_start = start + pos + 1;
-            // Only move start if it doesn't consume the whole match
             if potential_start < end {
                 start = potential_start;
             }
         }
 
-        // 2. Character-Class Trimming
-        // Remove leading spaces/quotes
+        // 2. Character-Class Trimming (Leading)
         while start < end && (
             text[start].is_ascii_whitespace() || 
-            matches!(text[start], b'"' | b'\'' | b'[' | b'{' | b'<' | b'(' | b'-')
+            matches!(text[start], b'"' | b'\'' | b'[' | b'{' | b'<' | b'(' | b'-' | b'_')
         ) {
             start += 1;
         }
 
-        // Remove trailing spaces/quotes/punctuation
-        while end > start && (
-            text[end - 1].is_ascii_whitespace() || 
-            matches!(text[end - 1], b'"' | b'\'' | b',' | b'.' | b'!' | b'?' | b']' | b'}' | b'>' | b')' | b'_')
-        ) {
-            end -= 1;
+        // 3. Statistical Decay Walk: Aggressive Tail Trimming
+        // We walk backward from the end. Random secrets are usually mixed-case, 
+        // hex, or symbols. Natural language is usually lowercase alphabetic.
+        while (end - start) > 2 {
+            let tail_byte = text[end - 1];
+            
+            // HARD STOP CONDITIONS for English noise:
+            // - Stop if it's an underscore (common separator in 'extra_padding')
+            // - Stop if it's lowercase (English words like 'padding' or 'ing')
+            // - Stop if it's whitespace or sentence punctuation
+            if tail_byte == b'_' 
+                || tail_byte.is_ascii_lowercase() 
+                || tail_byte.is_ascii_whitespace() 
+                || matches!(tail_byte, b'.' | b',' | b'!' | b'?' | b']' | b'}' | b'>' | b')') 
+            {
+                end -= 1;
+            } else {
+                // If we hit a high-entropy char (digit, uppercase, or symbol), 
+                // we have likely reached the end of the secret core.
+                break;
+            }
         }
 
         m.start = start;

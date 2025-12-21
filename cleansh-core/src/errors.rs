@@ -3,7 +3,7 @@
 //! This module defines a structured error enum for the library, providing
 //! specific, actionable error types that can be handled programmatically.
 //!
-//! License: BUSL-1.1
+//! License: MIT OR APACHE 2.0
 
 use thiserror::Error;
 

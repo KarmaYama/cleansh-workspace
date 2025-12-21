@@ -9,7 +9,7 @@
 //! define its logic, and declare it here using `pub mod <engine_name>;`.
 //!
 //! # License
-//! BUSL-1.1
+//! MIT OR APACHE 2.0
 
 pub mod regex_engine;
 pub mod entropy_engine;

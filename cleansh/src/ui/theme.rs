@@ -47,13 +47,17 @@ pub enum ThemeEntry {
     SummaryOccurrences,
     /// Style for user prompts or confirmation questions.
     Prompt,
+    /// Heatmap: Critical entropy (likely a secret core).
+    HeatmapCritical,
+    /// Heatmap: High entropy (suspicious randomness).
+    HeatmapHigh,
+    /// Heatmap: Moderate entropy (potential noise).
+    HeatmapModerate,
+    /// Heatmap: Low entropy (predictable text).
+    HeatmapLow,
 }
 
 /// Represents an ANSI color that can be used in the theme.
-///
-/// Currently, only named 16-color ANSI standard colors are supported.
-/// RGB and 256-color codes are intentionally not supported to keep the
-/// theme configuration simple and broadly compatible.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(untagged)]
 pub enum ThemeColor {
@@ -82,54 +86,19 @@ impl FromStr for ThemeColor {
     type Err = ParseThemeColorError;
 
     /// Attempts to parse a string into a `ThemeColor`.
-    ///
-    /// Only recognizes exact matches (case-insensitive) of the 16 standard
-    /// ANSI color names.
-    ///
-    /// # Arguments
-    ///
-    /// * `s` - The string slice to parse.
-    ///
-    /// # Returns
-    ///
-    /// `Ok(ThemeColor)` if the string is a valid named ANSI color,
-    /// `Err(ParseThemeColorError)` otherwise.
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        // Accept only exact matches of the 16 ANSI color names
         let lower = s.to_lowercase();
         match lower.as_str() {
-            "black"
-            | "red"
-            | "green"
-            | "yellow"
-            | "blue"
-            | "magenta"
-            | "cyan"
-            | "white"
-            | "brightblack"
-            | "brightred"
-            | "brightgreen"
-            | "brightyellow"
-            | "brightblue"
-            | "brightmagenta"
-            | "brightcyan"
-            | "brightwhite" => Ok(ThemeColor::Named(lower)),
+            "black" | "red" | "green" | "yellow" | "blue" | "magenta" | "cyan" | "white" |
+            "brightblack" | "brightred" | "brightgreen" | "brightyellow" | "brightblue" | 
+            "brightmagenta" | "brightcyan" | "brightwhite" => Ok(ThemeColor::Named(lower)),
             _ => Err(ParseThemeColorError),
         }
     }
 }
 
 impl ThemeColor {
-    /// Converts the `ThemeColor` enum variant into its corresponding `owo_colors::AnsiColors` enum.
-    ///
-    /// This mapping allows the `ThemeColor` to be directly used with the `owo-colors` crate
-    /// for applying terminal colors.
-    ///
-    /// # Returns
-    ///
-    /// The `AnsiColors` enum variant corresponding to the `ThemeColor`.
-    /// Falls back to `AnsiColors::White` if an unrecognized named color somehow slips through
-    /// (though `FromStr` should prevent this if strict).
+    /// Converts the `ThemeColor` enum variant into its corresponding `owo_colors::AnsiColors`.
     pub fn to_ansi_color(&self) -> AnsiColors {
         match self {
             ThemeColor::Named(name) => match name.as_str() {
@@ -149,120 +118,67 @@ impl ThemeColor {
                 "brightmagenta" => AnsiColors::BrightMagenta,
                 "brightcyan" => AnsiColors::BrightCyan,
                 "brightwhite" => AnsiColors::BrightWhite,
-                _ => AnsiColors::White, // fallback, though FromStr should prevent this if strict
+                _ => AnsiColors::White,
             },
         }
     }
 }
 
 /// Represents the style configuration for a specific `ThemeEntry`.
-///
-/// Currently, `ThemeStyle` only supports a foreground color (`fg`).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
 pub struct ThemeStyle {
     /// An optional `ThemeColor` to apply as the foreground color.
     pub fg: Option<ThemeColor>,
 }
 
-// MODIFIED: `build_theme_map` is now a standalone function
 /// Loads a theme configuration from a YAML file or returns the default theme.
-///
-/// If `theme_path` is provided, it attempts to load a custom theme from that path.
-/// If `theme_path` is `None` or loading from the file fails, it falls back to
-/// the default theme.
-///
-/// # Arguments
-///
-/// * `theme_path` - An optional `PathBuf` pointing to a custom theme YAML file.
-///
-/// # Returns
-///
-/// A `Result` containing a `ThemeMap` on success, or an `anyhow::Error` if
-/// a custom theme is specified but cannot be loaded.
 pub fn build_theme_map(theme_path: Option<&PathBuf>) -> Result<ThemeMap> {
     if let Some(path) = theme_path {
-        // Attempt to load from file. If it fails, propagate the error.
         ThemeStyle::load_from_file(path)
     } else {
-        // If no path is provided, return the default theme.
         Ok(ThemeStyle::default_theme_map())
     }
 }
 
 impl ThemeStyle {
     /// Loads a theme configuration from a YAML file on disk and merges it with default styles.
-    ///
-    /// This function reads a YAML file specified by `path`, parses it into a `HashMap`
-    /// of `ThemeEntry` to `ThemeStyle`, and then ensures that all `ThemeEntry` variants
-    /// have an associated style. If any entry is missing in the custom file, it's
-    /// filled in with a default `ThemeStyle` (foreground color set to white).
-    ///
-    /// # Type Parameters
-    ///
-    /// * `P`: A type that can be converted into a `&Path` (e.g., `&str`, `String`, `PathBuf`).
-    ///
-    /// # Arguments
-    ///
-    /// * `path` - The path to the YAML theme configuration file.
-    ///
-    /// # Returns
-    ///
-    /// A `Result` containing a `HashMap<ThemeEntry, ThemeStyle>` on success,
-    /// or an `anyhow::Error` if the file cannot be read or parsed.
-    pub fn load_from_file<P: AsRef<Path>>(path: P) -> Result<ThemeMap> { // Use ThemeMap alias
+    pub fn load_from_file<P: AsRef<Path>>(path: P) -> Result<ThemeMap> {
         let path = path.as_ref();
         let text = std::fs::read_to_string(path)
             .with_context(|| format!("Failed to read theme file {}", path.display()))?;
-        let mut custom: ThemeMap = // Use ThemeMap alias
-            serde_yaml::from_str(&text).with_context(|| format!("Failed to parse theme file {}", path.display()))?;
-        // Fill in missing entries with default white.
+        let mut custom: ThemeMap = serde_yaml::from_str(&text)
+            .with_context(|| format!("Failed to parse theme file {}", path.display()))?;
+        
         for entry in [
-            ThemeEntry::Header,
-            ThemeEntry::Success,
-            ThemeEntry::Info,
-            ThemeEntry::Warn,
-            ThemeEntry::Error,
-            ThemeEntry::RedactedText,
-            ThemeEntry::DiffAdded,
-            ThemeEntry::DiffRemoved,
-            ThemeEntry::DiffHeader,
-            ThemeEntry::SummaryRuleName,
-            ThemeEntry::SummaryOccurrences, // Add this here as well
-            ThemeEntry::Prompt,
+            ThemeEntry::Header, ThemeEntry::Success, ThemeEntry::Info, ThemeEntry::Warn,
+            ThemeEntry::Error, ThemeEntry::RedactedText, ThemeEntry::DiffAdded,
+            ThemeEntry::DiffRemoved, ThemeEntry::DiffHeader, ThemeEntry::SummaryRuleName,
+            ThemeEntry::SummaryOccurrences, ThemeEntry::Prompt,
+            ThemeEntry::HeatmapCritical, ThemeEntry::HeatmapHigh,
+            ThemeEntry::HeatmapModerate, ThemeEntry::HeatmapLow,
         ] {
             custom.entry(entry).or_insert_with(|| ThemeStyle { fg: Some(ThemeColor::Named("white".into())) });
         }
         Ok(custom)
     }
 
-    /// Returns a default theme map where all `ThemeEntry` elements are styled with white foreground.
-    ///
-    /// This function provides a baseline theme that can be used if no custom
-    /// theme file is provided or loaded.
-    ///
-    /// # Returns
-    ///
-    /// A `HashMap<ThemeEntry, ThemeStyle>` representing the default theme.
-    pub fn default_theme_map() -> ThemeMap { // Use ThemeMap alias
+    /// Returns a default theme map with predefined color mappings.
+    pub fn default_theme_map() -> ThemeMap {
         let mut default_theme = HashMap::new();
-        // Set specific colors for diff-related entries
         default_theme.insert(ThemeEntry::DiffAdded, ThemeStyle { fg: Some(ThemeColor::Named("green".into())) });
         default_theme.insert(ThemeEntry::DiffRemoved, ThemeStyle { fg: Some(ThemeColor::Named("red".into())) });
 
-        // Insert all other entries with their default colors (white)
+        // Default Heatmap Colors
+        default_theme.insert(ThemeEntry::HeatmapCritical, ThemeStyle { fg: Some(ThemeColor::Named("brightred".into())) });
+        default_theme.insert(ThemeEntry::HeatmapHigh, ThemeStyle { fg: Some(ThemeColor::Named("red".into())) });
+        default_theme.insert(ThemeEntry::HeatmapModerate, ThemeStyle { fg: Some(ThemeColor::Named("yellow".into())) });
+        default_theme.insert(ThemeEntry::HeatmapLow, ThemeStyle { fg: Some(ThemeColor::Named("brightblack".into())) });
+
         for entry in [
-            ThemeEntry::Header,
-            ThemeEntry::Success,
-            ThemeEntry::Info,
-            ThemeEntry::Warn,
-            ThemeEntry::Error,
-            ThemeEntry::RedactedText,
-            ThemeEntry::DiffHeader,
-            ThemeEntry::SummaryRuleName,
-            ThemeEntry::SummaryOccurrences,
-            ThemeEntry::Prompt,
+            ThemeEntry::Header, ThemeEntry::Success, ThemeEntry::Info, ThemeEntry::Warn,
+            ThemeEntry::Error, ThemeEntry::RedactedText, ThemeEntry::DiffHeader,
+            ThemeEntry::SummaryRuleName, ThemeEntry::SummaryOccurrences, ThemeEntry::Prompt,
         ] {
-            // Only insert if it's not already present to avoid overwriting DiffAdded/DiffRemoved
             default_theme.entry(entry).or_insert_with(|| ThemeStyle { fg: Some(ThemeColor::Named("white".into())) });
         }
         default_theme

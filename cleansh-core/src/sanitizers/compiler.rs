@@ -5,7 +5,7 @@
 //! efficient sanitization. It uses a global, shared cache to avoid
 //! redundant compilation.
 //!
-//! License: BUSL-1.1
+//! License: MIT OR APACHE 2.0
 
 use anyhow::Result;
 use log::{debug, warn};

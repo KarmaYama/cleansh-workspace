@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.2.0] - 2025-12-20 — Surgical Precision & Explainability
+
+This release marks the transition of the Entropy Engine from a statistical locator to a surgical extraction tool. By implementing an aggressive statistical decay walk and semantic anchoring, CleanSH now eliminates "locator bleed" while providing full transparency into the detection process.
+
+### Added
+* **Entropy Heatmap Mode:** A new "Explainability" mode that visualizes the statistical heat of every character. This allows users to see exactly *why* a string was flagged. Use it via: `cleansh sanitize --engine entropy --heatmap` 
+* **Surgical Entropy Extraction:** Replaced fixed-window redaction with a statistical decay walkThe engine now identifies the "heat core" and "shrink-wraps" redactions to the secret payload.
+**Semantic Boundary Anchoring:** Detection now snaps to common delimiters (like `:` or `=`), preventing labels from being accidentally redacted. 
+### Fixed
+**Sentence Bleeding:** Resolved a critical issue where the sliding window would drag trailing English noise (like `_extra_padding`) into the redaction range.
+**CLI Dependency Inversion:** Refactored the UI layer to consume heat scores from the engine trait rather than linking directly to the math crate. 
+
+
 ## [0.1.11] - 2025-12-20 — Dynamic Entropy Configuration
 
 ### Added
