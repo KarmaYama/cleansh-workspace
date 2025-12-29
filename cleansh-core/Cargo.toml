@@ -45,4 +45,4 @@ async-trait = "0.1.89"
 
 [dev-dependencies]
 test-log = "0.2.14" 
-tempfile = "3.10"
+tempfile = "3.24"
