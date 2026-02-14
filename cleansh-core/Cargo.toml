@@ -1,6 +1,4 @@
 # cleansh-core/Cargo.toml
-# File: Cargo.toml
-
 [package]
 name = "cleansh-core"
 version = "0.1.6"
@@ -33,10 +31,12 @@ thiserror = "2.0"
 uuid = { version = "1.18", features = ["serde", "v4"] } 
 bincode = { version = "2.0", features = ["serde"] }
 
-# FIX: Switch reqwest to use 'rustls' instead of 'openssl'
-# This removes the dependency on system C libraries (openssl-sys),
-# fixing the cross-compilation failures for aarch64 and musl targets.
+# FIX: Switch reqwest to use 'rustls'
 reqwest = { version = "0.12", default-features = false, features = ["json", "blocking", "rustls-tls"] }
+
+# AWS SDK Dependencies (Required for S3Vault)
+aws-config = { version = "1.1", default-features = false, features = ["behavior-version-latest", "rt-tokio", "rustls"] }
+aws-sdk-s3 = { version = "1.14", default-features = false, features = ["rt-tokio", "rustls"] }
 
 # Internal crate dependency
 cleansh-entropy = { version = "0.1.4", path = "../cleansh-entropy" }
